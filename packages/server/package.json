@@ -1,0 +1,25 @@
+{
+  "name": "@msgdock/server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@msgdock/contracts": "workspace:*",
+    "@msgdock/channels": "workspace:*",
+    "@msgdock/database": "workspace:*",
+    "@nestjs/common": "^11.1.0",
+    "@node-rs/argon2": "^2.0.2",
+    "bullmq": "^5.63.0",
+    "ioredis": "^5.8.0",
+    "mustache": "^4.2.0",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/mustache": "^4.2.0"
+  }
+}

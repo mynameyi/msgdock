@@ -1,0 +1,1341 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/admin/bootstrap": {
+      "get": {
+        "operationId": "IdentityController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "身份"
+        ]
+      }
+    },
+    "/api/admin/session": {
+      "get": {
+        "operationId": "IdentityController_session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "身份"
+        ]
+      }
+    },
+    "/api/admin/setup": {
+      "post": {
+        "operationId": "IdentityController_setup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "身份"
+        ]
+      }
+    },
+    "/api/admin/login": {
+      "post": {
+        "operationId": "IdentityController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "身份"
+        ]
+      }
+    },
+    "/api/admin/logout": {
+      "post": {
+        "operationId": "IdentityController_logout",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "身份"
+        ]
+      }
+    },
+    "/api/admin/password": {
+      "post": {
+        "operationId": "IdentityController_password",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "身份"
+        ]
+      }
+    },
+    "/api/admin/applications": {
+      "get": {
+        "operationId": "ConfigurationController_applications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      },
+      "post": {
+        "operationId": "ConfigurationController_createApplication",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/applications/{id}": {
+      "put": {
+        "operationId": "ConfigurationController_updateApplication",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/applications/{id}/keys": {
+      "post": {
+        "operationId": "ConfigurationController_createKey",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/applications/{id}/keys/{keyId}/revoke": {
+      "post": {
+        "operationId": "ConfigurationController_revokeKey",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/channels": {
+      "get": {
+        "operationId": "ConfigurationController_channels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      },
+      "post": {
+        "operationId": "ConfigurationController_createChannel",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/channels/{id}": {
+      "put": {
+        "operationId": "ConfigurationController_updateChannel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/targets": {
+      "get": {
+        "operationId": "ConfigurationController_targets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/topics": {
+      "get": {
+        "operationId": "ConfigurationController_topics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      },
+      "post": {
+        "operationId": "ConfigurationController_createTopic",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/topics/{id}": {
+      "put": {
+        "operationId": "ConfigurationController_updateTopic",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/templates": {
+      "get": {
+        "operationId": "ConfigurationController_templates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      },
+      "post": {
+        "operationId": "ConfigurationController_createTemplate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/templates/{id}": {
+      "put": {
+        "operationId": "ConfigurationController_updateTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/audit": {
+      "get": {
+        "operationId": "ConfigurationController_audit",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
+    "/api/admin/overview": {
+      "get": {
+        "operationId": "DeliveriesController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/deliveries": {
+      "get": {
+        "operationId": "DeliveriesController_list",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/deliveries/{id}": {
+      "get": {
+        "operationId": "DeliveriesController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/deliveries/{id}/cancel": {
+      "post": {
+        "operationId": "DeliveriesController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/deliveries/{id}/replays": {
+      "post": {
+        "operationId": "DeliveriesController_replay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/deliveries/{id}/resolve": {
+      "post": {
+        "operationId": "DeliveriesController_resolve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/notifications/test": {
+      "post": {
+        "operationId": "DeliveriesController_test",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSendDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/admin/system": {
+      "get": {
+        "operationId": "DeliveriesController_system",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "投递"
+        ]
+      }
+    },
+    "/api/v1/apps/{appKey}/notifications": {
+      "post": {
+        "operationId": "NotificationsController_create",
+        "parameters": [
+          {
+            "name": "appKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "应用内唯一，1–200 个可见 ASCII 字符",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "已持久化受理，平台投递在后台进行"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {}
+        ],
+        "summary": "受理通知（默认需要 Bearer API Key；仅显式关闭鉴权的应用允许匿名发送）",
+        "tags": [
+          "通知 API"
+        ]
+      }
+    },
+    "/api/v1/apps/{appKey}/notifications/{id}": {
+      "get": {
+        "operationId": "NotificationsController_get",
+        "parameters": [
+          {
+            "name": "appKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "通知 API"
+        ]
+      }
+    },
+    "/api/v1/apps/{appKey}/notifications/{id}/deliveries": {
+      "get": {
+        "operationId": "NotificationsController_deliveries",
+        "parameters": [
+          {
+            "name": "appKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "通知 API"
+        ]
+      }
+    },
+    "/api/v1/apps/{appKey}/deliveries/{id}": {
+      "get": {
+        "operationId": "NotificationsController_delivery",
+        "parameters": [
+          {
+            "name": "appKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "通知 API"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "MsgDock API",
+    "description": "",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "不透明 API Key，通过 Authorization: Bearer 传递"
+      },
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "md_session"
+      },
+      "anonymous": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "仅为发送接口的匿名配置说明；实际以应用 authMode 为准"
+      }
+    },
+    "schemas": {
+      "SetupDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          },
+          "setupToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "setupToken"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "PasswordDto": {
+        "type": "object",
+        "properties": {
+          "oldPassword": {
+            "type": "string",
+            "format": "password"
+          },
+          "newPassword": {
+            "type": "string",
+            "format": "password"
+          }
+        },
+        "required": [
+          "oldPassword",
+          "newPassword"
+        ]
+      },
+      "ApplicationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "authMode": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "none"
+            ],
+            "default": "api_key"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "allowedTargetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "perMinuteLimit": {
+            "type": "number",
+            "default": 60
+          }
+        },
+        "required": [
+          "name",
+          "key",
+          "authMode",
+          "enabled",
+          "allowedTargetIds",
+          "perMinuteLimit"
+        ]
+      },
+      "CredentialsDto": {
+        "type": "object",
+        "properties": {
+          "webhookUrl": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "appKey": {
+            "type": "string"
+          },
+          "appSecret": {
+            "type": "string"
+          },
+          "robotCode": {
+            "type": "string"
+          }
+        }
+      },
+      "ChannelDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "wecom.group_webhook",
+              "feishu.group_webhook",
+              "dingtalk.enterprise_bot"
+            ]
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/CredentialsDto"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "targetName": {
+            "type": "string"
+          },
+          "openConversationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "credentials",
+          "enabled",
+          "targetName"
+        ]
+      },
+      "TopicDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "targetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "key",
+          "targetIds"
+        ]
+      },
+      "TemplateDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "key",
+          "body"
+        ]
+      },
+      "ReplayDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "reason",
+          "confirmed"
+        ]
+      },
+      "TestSendDto": {
+        "type": "object",
+        "properties": {
+          "applicationId": {
+            "type": "string"
+          },
+          "targetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "targetIds",
+          "text"
+        ]
+      },
+      "TargetDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "targets",
+              "topic"
+            ]
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "TextDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "TemplateRefDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "NotificationDto": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetDto"
+          },
+          "message": {
+            "$ref": "#/components/schemas/TextDto"
+          },
+          "template": {
+            "$ref": "#/components/schemas/TemplateRefDto"
+          },
+          "variables": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "expires_in": {
+            "type": "number",
+            "default": 3600
+          }
+        },
+        "required": [
+          "event",
+          "target"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+name: Verify MVP
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm lint && pnpm typecheck && pnpm test
+      - run: git diff --exit-code -- docs/openapi.json packages/api-client/src/schema.d.ts
+      - run: docker build -t msgdock:ci .
+      - name: Start disposable all-in-one instance
+        run: |
+          node scripts/mock-platform.cjs >/tmp/msgdock-mock.log 2>&1 &
+          docker run -d --name msgdock-ci --add-host=host.docker.internal:host-gateway -p 127.0.0.1:3301:3000 -e MSGDOCK_TEST_MODE=true -e MSGDOCK_TEST_SERVER=http://host.docker.internal:3320/send -e MSGDOCK_SEND_TIMEOUT_MS=1000 -v msgdock-ci-data:/data msgdock:ci
+          node scripts/wait-ready.mjs
+      - name: API integration, restart and queue recovery
+        env:
+          TEST_BASE_URL: http://127.0.0.1:3301
+          TEST_STATE_OUTPUT: /tmp/msgdock-test-state.json
+          TEST_CONTAINER: msgdock-ci
+        run: |
+          export TEST_SETUP_TOKEN="$(docker exec msgdock-ci cat /data/secrets/setup-token)"
+          node scripts/integration.mjs
+          docker restart --timeout 90 msgdock-ci
+          node scripts/wait-ready.mjs
+          node scripts/resume-check.mjs
+          node scripts/container-recovery.mjs
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs --tail 120 msgdock-ci || true
+      - name: Remove disposable instance
+        if: always()
+        run: docker rm -f msgdock-ci || true

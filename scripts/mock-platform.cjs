@@ -1,0 +1,3 @@
+const http=require('node:http');
+const counts=new Map();
+http.createServer(async(req,res)=>{if(req.url==='/health'){res.end('ok');return;}let raw='';for await(const chunk of req)raw+=chunk;const {text}=JSON.parse(raw);const count=(counts.get(text)||0)+1;counts.set(text,count);res.setHeader('Content-Type','application/json');if(text.includes('mock:unknown')){setTimeout(()=>{res.end(JSON.stringify({code:0}));},3000);return;}if(text.includes('mock:retry')&&count===1){res.writeHead(429,{'retry-after':'1'});res.end('{}');return;}if(text.includes('mock:failed')){res.end(JSON.stringify({errcode:40058}));return;}res.end(JSON.stringify({code:0}));}).listen(Number(process.env.MOCK_PORT||3320),'0.0.0.0',()=>console.log('Mock platform listening (test only)'));

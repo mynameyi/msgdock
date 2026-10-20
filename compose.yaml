@@ -1,0 +1,16 @@
+services:
+  msgdock:
+    build: .
+    image: msgdock:0.1.0
+    container_name: msgdock
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:3300:3000'
+    environment:
+      TZ: Asia/Shanghai
+      COOKIE_SECURE: 'false'
+    volumes:
+      - msgdock-data:/data
+    stop_grace_period: 90s
+volumes:
+  msgdock-data:
