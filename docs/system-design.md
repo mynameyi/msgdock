@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.1 |
+| 文档版本 | v0.2 |
 | 更新日期 | 2026-10-20 |
 | 状态 | 首版设计基线，待实现与验证 |
 | 仓库 | [mynameyi/msgdock](https://github.com/mynameyi/msgdock) |
@@ -21,13 +21,15 @@
 | 前端组织 | Feature-based：按业务功能聚合代码 | 与 React 组件、Hooks、路由和服务端状态管理的使用方式吻合 |
 | 前端交互 | 组件化、单向数据流、按需提取业务 Hooks | 页面状态与展示有明确职责，保留简单页面的直接实现 |
 | 后端组织 | NestJS Feature Modules，模块内部按职责分层 | 使用 NestJS 原生模块与依赖注入机制，按业务能力封装服务 |
-| 后端形态 | 模块化单体，共享业务模块，API 与 Worker 独立启动 | 首版便于开发与部署，两个入口可以独立扩容 |
+| 后端形态 | 模块化单体，共享业务模块，API 与 Worker 为独立进程 | 默认在同一个容器运行；保留以后拆分进程部署的能力 |
 | 核心建模 | 为通知、投递、发送尝试定义明确模型与状态规则 | 核心复杂度在可靠投递、平台差异和失败恢复 |
 | 渠道扩展 | 稳定的渠道接口与进程内适配器注册 | 新平台接入时复用调度、审计和状态处理 |
 | 数据权威 | PostgreSQL 保存业务事实；Redis 承载队列与协调状态 | 队列丢失后可以依据数据库检查和重建未执行任务 |
 | 受理一致性 | 消息、投递计划与 Outbox 在同一事务提交 | 消除数据库提交与队列入队之间的直接双写空隙 |
 | 执行语义 | 按至少一次执行设计，使用幂等、租约与结果核查控制重复 | 第三方接口并不统一提供端到端幂等和可查询回执 |
-| 渲染与部署 | React SPA；Nginx 托管静态资源并代理 API | 主要场景是登录后的管理控制台，由独立后端提供数据 |
+| 渲染与部署 | React SPA；Fastify 同域提供静态资源和 API | 前后端代码分离，发布时合并进一个镜像 |
+| 部署单元 | 单个 Docker 镜像、单个容器，内含 API、Worker、PostgreSQL 与 Redis | 默认不要求另行部署数据库、Redis 或 Nginx |
+| 推送接口鉴权 | 每个应用可选 api_key 或 none，默认 api_key | API Key 通过 HTTP 请求头 Authorization: Bearer 传递；关闭鉴权仅作用于指定应用的发送接口 |
 
 前端和后端分别确定代码组织方式。MVC、MVVM、DDD 与 Feature-based 解决的问题并不相同，本项目不以其中一个名称概括全部实现：前端采用 React 常见的组件与状态组织方式，后端采用 NestJS 业务模块和分层服务。领域建模重点用于投递规则，普通配置功能采用直接的增删改查实现。
 
@@ -43,12 +45,12 @@
 ### 2.2 首版交付范围
 
 - 一个部署实例对应一个工作空间，支持多个接入应用、多个管理员与角色。
-- 应用 API Key、管理端登录、资源授权和操作审计。
+- 应用 API Key、默认开启的发送鉴权、显式可选的非鉴权发送、管理端登录、资源授权和操作审计。
 - 渠道实例、目标、主题、路由规则、模板版本与发送测试。
 - 企业微信群 Webhook、飞书群 Webhook、钉钉企业机器人主动发送。
 - 通知受理、持久化投递、模板渲染、目标级状态、限流、过期、明确失败后的重试。
 - 投递日志、未知结果标记、人工重发与基础运行指标。
-- Docker Compose 部署、数据库迁移、备份与恢复说明。
+- 单镜像单容器部署、持久化目录、数据库迁移、备份与恢复说明。
 
 ### 2.3 后续扩展边界
 
@@ -77,7 +79,8 @@
 | 日志 | Pino、nestjs-pino | 结构化日志、关联标识、敏感字段脱敏 |
 | 测试 | 后端 Jest、前端 Vitest 与 Testing Library、Playwright | 业务规则、真实组件交互、集成与关键端到端流程 |
 | 工程 | pnpm Workspace、ESLint、Prettier | 依赖管理、边界检查与一致格式 |
-| 发布 | GitHub Actions、Docker、Docker Compose、Nginx | 检查、构建、镜像与同域入口 |
+| 静态资源 | @fastify/static，兼容当前 NestJS / Fastify 版本 | 提供控制台构建产物与受控的 SPA 路由回退 |
+| 发布 | GitHub Actions、Docker 多阶段构建、tini、Supervisor | 一个最终镜像；管理 API、Worker 与内置数据服务进程 |
 | 文件 | 挂载目录起步，封装存储接口 | 后续按需接入 S3 兼容对象存储 |
 
 初始化工程时，选择与 Node.js 24 兼容的稳定依赖组合，提交 pnpm-lock.yaml，固定运行时和容器镜像版本。具体小版本由初始化结果记录，不以浮动 latest 作为发布基线。Node.js 与 PostgreSQL 的版本状态见参考资料 [R1]、[R2]。
@@ -86,17 +89,28 @@
 
 ```mermaid
 flowchart TD
-    Browser["浏览器：React 控制台"] --> Gateway["Nginx：HTTPS、静态资源、反向代理"]
-    Business["外部业务系统"] --> Gateway
-    Callback["IM 平台 HTTP 回调"] --> Gateway
-    Gateway --> API["API 进程：NestJS / Fastify"]
-    API --> DB["PostgreSQL：配置、通知、投递、Outbox"]
-    DB --> Relay["Worker 内的 Outbox 分发器"]
-    Relay --> Queue["Redis / BullMQ"]
-    Queue --> Worker["Worker：领取、限流、发送、状态处理"]
-    Worker --> Adapter["渠道适配器：HTTPS / WebSocket / 长轮询"]
+    Browser["浏览器：React 控制台"] --> API
+    Business["外部业务系统"] --> API
+    Callback["IM 平台 HTTP 回调"] --> API
+    subgraph Container["一个 MsgDock 镜像 / 一个容器"]
+        Init["tini / Supervisor：进程与退出管理"]
+        API["API：NestJS / Fastify + 控制台静态资源"]
+        DB["PostgreSQL：业务事实 / Outbox"]
+        Queue["Redis / BullMQ：队列 / 协调"]
+        Worker["Worker：Outbox、领取、限流、状态与连接"]
+        Adapter["渠道适配器：HTTPS / WebSocket / 长轮询"]
+        Init -.-> API
+        Init -.-> Worker
+        Init -.-> DB
+        Init -.-> Queue
+        API --> DB
+        DB --> Worker
+        Worker --> Queue
+        Queue --> Worker
+        Worker --> DB
+        Worker --> Adapter
+    end
     Adapter --> IM["企业微信、飞书、钉钉、微信"]
-    Worker --> DB
 ```
 
 | 部分 | 职责 |
@@ -107,6 +121,7 @@ flowchart TD
 | PostgreSQL | 可追溯的业务状态、发送计划、执行证据与恢复依据 |
 | Redis | BullMQ 数据、原子限流、短期连接路由与协调；队列开启持久化 |
 | 渠道适配器 | 平台鉴权、格式校验、渲染、发送、平台结果归一化 |
+| 进程管理 | 启动依赖、监督退出、转发信号与回收子进程；不承担业务调度 |
 
 前后端代码分离，部署时使用同一个域名。根路径提供控制台，`/api/v1/` 提供业务 API，`/api/admin/` 提供管理接口，`/webhooks/im/` 提供平台 HTTP 回调。前端路由回退规则只处理页面路径，API 与回调错误保留其原始 HTTP 状态。
 
@@ -129,7 +144,7 @@ msgdock/
 │   └── tooling/                 # 共享 TypeScript、ESLint 等工程配置
 ├── docs/
 │   └── system-design.md
-└── deploy/                      # Dockerfile、Compose、Nginx 示例
+└── deploy/                      # Dockerfile、入口脚本、Supervisor、内置数据服务配置
 ```
 
 依赖约定：
@@ -237,7 +252,7 @@ apps/worker/src/
 | 模块 | 主要职责 |
 | --- | --- |
 | identity | 管理员、角色、会话、管理端授权 |
-| applications | 接入应用、API Key、可访问主题与目标范围 |
+| applications | 接入应用、auth_mode（默认 api_key）、API Key、可访问主题与目标范围 |
 | channels | 渠道实例、加密凭证、能力声明、健康状态 |
 | routing | 注册目标、主题、路由规则、投递目标解析与去重 |
 | templates | 模板、版本、变量定义、预览和渲染规则 |
@@ -363,7 +378,7 @@ SendOutcome 区分平台接受、明确可重试失败、永久失败与结果�
 
 ### 10.1 通知受理事务
 
-1. 校验 API Key、应用权限、请求大小和基本结构，规范化请求并计算摘要。
+1. 从路径解析接入应用并读取其 auth_mode；按模式验证 API Key 或建立该应用的匿名发送上下文，检查应用权限、限额、请求大小和基本结构，规范化请求并计算摘要。
 2. 按应用与操作范围查询幂等记录；命中时核对摘要并返回原通知或冲突结果。
 3. 未命中时，在同一数据库事务内建立幂等记录，读取有效模板与授权路由，完成变量、目标去重和能力检查，创建 Notification、Delivery、固定快照与 OutboxEvent。
 4. 幂等记录与通知在同一事务绑定；并发插入冲突时重新读取已提交记录并核对摘要，避免生成第二组投递计划。
@@ -451,21 +466,21 @@ accepted 的语义是平台接受，MsgDock 不承诺所有渠道端到端恰好
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| POST /api/v1/notifications | 幂等受理通知 |
-| GET /api/v1/notifications/{id} | 查询通知与目标状态计数 |
-| GET /api/v1/notifications/{id}/deliveries | 游标分页查询投递 |
-| GET /api/v1/deliveries/{id} | 查询单次目标投递及公开结果 |
+| POST /api/v1/apps/{app_key}/notifications | 按应用配置使用鉴权或非鉴权模式，幂等受理通知 |
+| GET /api/v1/apps/{app_key}/notifications/{id} | 始终需要 API Key，查询通知与目标状态计数 |
+| GET /api/v1/apps/{app_key}/notifications/{id}/deliveries | 始终需要 API Key，游标分页查询投递 |
+| GET /api/v1/apps/{app_key}/deliveries/{id} | 始终需要 API Key，查询单次目标投递及公开结果 |
 | POST /api/admin/deliveries/{id}/replays | 在授权和审计下创建关联重发 |
 | POST /api/admin/deliveries/{id}/cancel | 取消 pending 或 retry_wait 投递 |
 | POST /api/admin/channels/{id}/test | 向已授权测试目标发送测试通知 |
 | POST /webhooks/im/{type}/{instanceId} | 按平台要求接收事件；校验探测方法由适配器实现 |
 
-所有资源查询检查工作空间与应用授权。后台接口以服务端会话认证，业务接口以 API Key 认证；越权资源统一返回受控的未找到或禁止结果，不泄露其他应用资源。
+所有资源查询检查工作空间与应用授权。后台接口以服务端会话认证；业务 API 使用 API Key，只有明确设置为 none 的应用允许匿名调用其通知发送接口。app_key 是公开的应用标识，不是凭证；路径、有效 API Key 的归属必须一致，不能跨应用调用。越权资源统一返回受控的未找到或禁止结果。
 
 发送示例：
 
 ```http
-POST /api/v1/notifications
+POST /api/v1/apps/order-service/notifications
 Authorization: Bearer <application-api-key>
 Idempotency-Key: order-paid-20261020-001
 Content-Type: application/json
@@ -504,9 +519,13 @@ Content-Type: application/json
 
 accepted_for_processing 表示 MsgDock 已可靠受理，与 Delivery 的平台 accepted 状态分开。重复受理返回原通知 ID，并通过响应元数据标识幂等命中。
 
+非鉴权模式使用相同路径、请求体、幂等规则及响应格式，省略 Authorization 请求头。服务端仅依据已保存的应用配置决定是否允许，不接受通过请求参数或请求头临时关闭鉴权。无论模式如何，始终限制该应用可访问的主题与目标，并执行速率、积压和消息大小限制。
+
+OpenAPI 使用 HTTP bearer 安全方案描述 API Key（type: http、scheme: bearer；该 Key 是不透明随机值，不要求是 JWT）[R17]。匿名发送在契约中作为可选安全要求表达，并说明其生效条件由应用配置决定。管理端接口保持独立的会话安全方案。
+
 ### 11.2 错误与版本
 
-错误采用统一的 code、message、request_id、受控 details 结构。校验失败用 400，能力或模板语义不满足用 422，幂等冲突或不可取消状态用 409，速率限制用 429，数据库不可用或超过受理积压上限用 503；事务未确认成功不得返回 202。
+错误采用统一的 code、message、request_id、受控 details 结构。校验失败用 400，缺失或无效 API Key 用 401，凭证与应用或操作范围不匹配用 403，能力或模板语义不满足用 422，幂等冲突或不可取消状态用 409，速率限制用 429，数据库不可用或超过受理积压上限用 503；事务未确认成功不得返回 202。
 
 公开契约使用 /api/v1，枚举和错误码保持稳定；列表采用游标分页并限制页大小。首版 JSON 请求体默认上限为 64 KiB，单次通知默认最多展开 500 条 Delivery，超限分别返回 413 或 422；这些保护参数可在受控范围内调整，不替代平台自身的消息大小限制。
 
@@ -520,7 +539,11 @@ OpenAPI 在 CI 生成、检查并同步 api-client，前端请求参数和响应
 - Owner 管理实例与身份权限；Admin 管理业务配置；Operator 执行授权范围内的发送与重发；Viewer 只读。敏感凭证操作单独授权并审计。
 - 管理密码使用 Argon2id 摘要；会话具备闲置与绝对到期时间，登录限速并记录异常。
 - API Key 使用高熵随机值，仅创建时完整显示；数据库保存可检索前缀与安全摘要，支持范围限制、撤销与重叠轮换。
-- application_id、workspace_id 和可访问目标从认证上下文取得；请求中的资源 ID 必须在授权范围内解析。
+- API Key 固定通过 HTTP 请求头 Authorization: Bearer <API_KEY> 传递；不放在 HTML 的 head、URL 查询参数或前端构建产物中。业务系统的服务端持有并使用 Key。
+- 新建应用的 auth_mode 默认 api_key；缺失配置或值不合法时按开启鉴权处理。管理员可以显式改为 none，界面明确显示“非鉴权”，保存操作者、时间和变更审计。
+- none 只开放该应用的通知发送入口；管理端、通知查询、凭证管理与平台回调验签都不受影响。匿名上下文中的 application_id、workspace_id 与可访问目标取自已保存的应用配置，禁止请求覆盖。
+- 即使应用允许匿名发送，只要请求携带 Authorization，就严格校验；无效、过期、撤销或归属不匹配的 Key 直接拒绝，不降级为匿名。
+- 鉴权上下文中的 application_id、workspace_id 和可访问目标来自有效凭证及应用配置；请求中的资源 ID 必须在授权范围内解析。两种模式共用同一个应用幂等范围；幂等键不作为查询凭证。
 
 ### 12.2 平台密钥与外部访问
 
@@ -537,24 +560,34 @@ HTTP 与长连接事件都归一化为内部事件。按平台协议验证签名
 
 ## 13. 部署、运维与数据生命周期
 
-### 13.1 首版部署单元
+### 13.1 单镜像、单容器部署
 
-| 服务 | 内容 |
+默认交付一个可独立运行的最终 Docker 镜像，内含控制台构建产物、API、Worker、PostgreSQL 18 与 Redis，不要求用户额外启动数据库、队列或反向代理容器。一个容器内运行多个受监督进程；这是为简化 MsgDock 私有化部署选择的打包方式，进程管理需处理子进程和退出行为 [R16]。前后端代码组织与运行进程边界保持独立。
+
+| 容器内组成 | 内容 |
 | --- | --- |
-| web | Nginx、控制台静态文件、API 与回调代理 |
-| api | NestJS HTTP 服务 |
+| tini + Supervisor | PID 1 信号转发、子进程回收、生命周期监督 |
+| api | NestJS / Fastify HTTP 服务、静态控制台、同域 API 与回调 |
 | worker | 任务消费、Outbox、对账、连接维护 |
-| postgres | 数据库与持久化卷 |
-| redis | BullMQ、限流与协调，AOF 与持久化卷 |
+| postgres | 内置数据库，仅监听容器回环地址 |
+| redis | 内置队列与协调服务，仅监听回环地址，启用 AOF 与 noeviction |
 
-数据库迁移作为独立的一次性发布步骤完成，成功后再切换应用版本。数据库与 Redis 不直接暴露到公网。正式环境维护 TLS、Secret 注入、备份存储和恢复流程；开发环境使用独立配置与凭证。
+只公开一个 HTTP 端口（容器端口 3000），持久化统一挂载到 /data，下分 postgres、redis、uploads、secrets 等目录；各目录使用独立服务账户和最小文件权限。镜像版本、数据库主版本和运行时固定；内置数据服务的安全更新随应用镜像发布。HTTPS 由已有网关或宿主环境终结，不增加必需容器。
+
+默认启动顺序：校验目录和配置 → 初始化或打开内置数据库与 Redis → 等待就绪 → 获取迁移锁并执行一次迁移 → 启动 API 和 Worker。迁移失败不得启动业务入口。升级已有 PostgreSQL 数据目录前先检查主版本；不对不兼容目录自动执行破坏性初始化或跨大版本升级。
+
+平台加密主密钥优先从部署 Secret 注入；未配置时在首次初始化生成并保存于 /data/secrets，后续复用，禁止每次启动重新生成。备份必须包含恢复密钥。首次管理员通过一次性初始化流程创建，不提供通用默认密码。
+
+发布目标为单个版本化镜像，例如 `ghcr.io/mynameyi/msgdock:<version>`；当前处于设计阶段，尚未发布可运行镜像。实现后给出一个镜像、一个端口、一个持久化卷的 docker run 示例；可附单服务 Compose 文件作为配置便利方式。
 
 ### 13.2 健康、退出与扩容
 
 - liveness 反映进程是否存活；API readiness 检查数据库和受理条件，Redis 暂时不可用可在积压预算内受理。
 - Worker readiness 反映数据库、队列与调度能力；单个渠道离线单独上报，不使其他渠道全部退出。
+- Docker HEALTHCHECK 汇总 API、Worker 心跳及内置数据服务的就绪状态；必要进程持续失败时由监督策略结束容器，配合 Docker restart 策略恢复。健康变为 unhealthy 本身不会触发 Docker 自动重启。
 - 收到停止信号后停止领取新任务，在有界时间内等待在途发送结束，保存可保存的证据，再停止连接并释放租约。
-- 单机 Compose 用于首版试运行；提高可用性时先独立保障数据库、Redis 和备份，再扩 API、投递 Worker 与连接 Worker。
+- 默认单容器只支持一个活动实例，不将同一个 /data 挂载给多个写入实例；复制容器不会自动得到水平扩容。提高可用性时再增加外部 PostgreSQL / Redis 与分角色启动模式，沿用同一个应用镜像；这不属于默认部署前提。
+- 退出顺序先停止受理与任务领取，等待有界排空，关闭 API 与 Worker，最后关闭 Redis 和 PostgreSQL；超时强制退出后按投递租约和证据恢复。
 - 扩容长连接 Worker 按实例重新分配归属，保持受控重连。媒体转换等高 CPU 任务出现后单独运行，保持发送进程响应能力。
 
 ### 13.3 指标与追踪
@@ -569,6 +602,8 @@ HTTP 与长连接事件都归一化为内部事件。按平台协议验证签名
 
 PostgreSQL 定期备份并验证恢复；对正式环境按部署方式增加 WAL 归档。备份与加密主密钥分别保护，恢复演练同时验证解密能力。Redis 持久化降低队列丢失概率，PostgreSQL 中的待执行事实用于补偿重建；恢复不会自动重发 accepted、delivered 或未核实的 unknown。
 
+运行中的数据库通过 pg_dump / pg_basebackup 等受支持方式备份；不把在线复制整个 /data 目录视为一致性备份。完整离线卷快照需先有序停止容器。容器删除或更新不删除持久化卷。
+
 ## 14. 测试与工程质量
 
 | 范围 | 验证重点 |
@@ -579,6 +614,8 @@ PostgreSQL 定期备份并验证恢复；对正式环境按部署方式增加 WA
 | 队列集成测试 | 真实 Redis / BullMQ 的重复入队、延迟、断连、补偿和多 Worker 配额 |
 | 前端测试 | 查询与 Mutation 状态、表单、权限体验、错误与未知结果展示 |
 | 端到端测试 | 登录、配置、测试发送、通知查询、人工重发与审计 |
+| 鉴权模式测试 | 默认鉴权、匿名发送范围、切换与撤销、无效 Key 不降级、查询始终鉴权、应用间隔离 |
+| 单容器部署验收 | 空卷初始化、重启与升级、迁移失败、子进程故障、健康状态、信号退出、备份恢复 |
 | 故障与恢复 | Outbox 标记前崩溃、Redis 数据丢失、平台超时、Worker 失联与租约过期 |
 
 关键验收条件：
@@ -589,6 +626,8 @@ PostgreSQL 定期备份并验证恢复；对正式环境按部署方式增加 WA
 4. 平台可能已接收但本地未取得结果时，界面与 API 显示 unknown，并遵循核查策略。
 5. Redis 丢失后可补回待执行计划，sending 状态按租约与证据处理，不直接盲目重发。
 6. 跨应用越权、未授权目标、重复回调与明文凭证日志均有防护验证。
+7. 一个镜像无需外部数据服务即可启动，重建容器后应用、密钥与投递数据从持久化卷恢复。
+8. 新建应用未带 Bearer Key 的发送返回 401；显式切换为 none 后仅发送入口允许匿名，查询和管理接口仍需认证。
 
 CI 执行依赖安装、类型检查、Lint、单元与集成测试、前端构建和 OpenAPI 客户端同步检查。发布镜像带 Git 提交标识；日志与文档中区分设计目标、模拟渠道测试和真实平台验证。
 
@@ -625,6 +664,8 @@ CI 执行依赖安装、类型检查、Lint、单元与集成测试、前端构�
 - [R13] Mustache 模板规范。
 - [R14] Ant Design 与 Vite 集成；[Vite 静态部署](https://vite.dev/guide/static-deploy.html)。
 - [R15] DDD 作者资源。
+- [R16] Docker 单容器多进程运行与子进程管理。
+- [R17] OpenAPI HTTP Bearer 鉴权描述。
 
 [R1]: https://nodejs.org/en/about/previous-releases
 [R2]: https://www.postgresql.org/support/versioning/
@@ -641,3 +682,5 @@ CI 执行依赖安装、类型检查、Lint、单元与集成测试、前端构�
 [R13]: https://mustache.github.io/mustache.5.html
 [R14]: https://ant.design/docs/react/use-with-vite/
 [R15]: https://www.domainlanguage.com/ddd/
+[R16]: https://docs.docker.com/engine/containers/multi-service_container/
+[R17]: https://swagger.io/docs/specification/v3_0/authentication/bearer-authentication/
