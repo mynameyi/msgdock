@@ -1,16 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  Res,
-  UnauthorizedException,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { IdentityService, RedisService, sha256 } from '@msgdock/server';
+import { IdentityService, RedisService, ServiceError, sha256 } from '@msgdock/server';
 import { LoginDto, SetupDto, PasswordDto } from './dto';
 import { AdminRequest, SessionGuard, checkOrigin } from './security';
 @ApiTags('身份')
@@ -25,7 +16,7 @@ export class IdentityController {
   }
   @Get('session') async session(@Req() req: FastifyRequest) {
     const session = await this.identity.session(req.cookies.md_session);
-    if (!session) throw new UnauthorizedException('请先登录');
+    if (!session) throw new ServiceError('SESSION_REQUIRED');
     return session;
   }
   @Post('setup') async setup(
@@ -35,7 +26,7 @@ export class IdentityController {
   ) {
     checkOrigin(req);
     if (!(await this.redis.limit(`setup:${sha256(req.ip)}`, 5, 300000)))
-      throw new UnauthorizedException('尝试过于频繁');
+      throw new ServiceError('RATE_LIMITED', '尝试过于频繁');
     return this.cookie(
       reply,
       await this.identity.setup(body.username, body.password, body.setupToken),

@@ -43,6 +43,7 @@ model ApiKey {
 }
 model Channel {
   id String @id @default(uuid()) @db.Uuid
+  shortId String @unique @default(dbgenerated("('ch_'::text || substr(replace((gen_random_uuid())::text, '-'::text, ''::text), 1, 12))"))
   name String
   type String
   pluginVersion String @default("1.0.0")
@@ -91,7 +92,6 @@ model Notification {
   application Application @relation(fields:[applicationId],references:[id])
   idempotencyKey String
   requestHash String
-  event String
   snapshot Json
   expiresAt DateTime
   createdAt DateTime @default(now())

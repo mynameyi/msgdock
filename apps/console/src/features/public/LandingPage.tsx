@@ -18,7 +18,7 @@ const features = [
   {
     icon: <ApiOutlined />,
     title: '一个接口，连接多个渠道',
-    detail: '统一提交业务事件、目标与消息内容。通过主题路由，一次通知触达多个接收目标。',
+    detail: '统一提交目标与消息内容。通过主题路由，一次通知触达多个接收目标。',
   },
   {
     icon: <SafetyCertificateOutlined />,
@@ -40,9 +40,8 @@ export function LandingPage() {
   const snippet = [
     `curl -X POST '${location.origin}/api/v1/apps/<APP_KEY>/notifications'`,
     "  -H 'Authorization: Bearer <API_KEY>'",
-    "  -H 'Idempotency-Key: <UNIQUE_EVENT_ID>'",
     "  -H 'Content-Type: application/json'",
-    `  -d '${JSON.stringify({ event: 'order.paid', target: { type: 'topic', key: 'finance' }, message: { text: '订单支付成功。' } }, null, 2)}'`,
+    `  -d '${JSON.stringify({ idempotency_key: '<UNIQUE_EVENT_ID>', target: { type: 'topic', key: 'finance' }, message: { text: '订单支付成功。' } }, null, 2)}'`,
   ].join(' \\\n');
   return (
     <>

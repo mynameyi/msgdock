@@ -1,21 +1,14 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  HttpException,
-  Injectable,
-  Module,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ServiceError } from '../../errors';
+import { Injectable, Module } from '@nestjs/common';
 import { Prisma } from '@msgdock/database';
 import { channelRegistry } from '@msgdock/channels';
+import { channelIdPattern } from '@msgdock/contracts';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService, RedisService, sha256 } from '../../infrastructure';
 import { renderText, requestHash } from './render';
+import { deliveryView } from '../deliveries/view';
 
 export interface NotificationInput {
-  event: string;
   target: { type: 'targets' | 'topic'; ids?: string[]; key?: string };
   message?: { text: string };
   template?: { key: string };
@@ -30,25 +23,32 @@ export class NotificationsService {
   ) {}
   async authenticate(appKey: string, authorization?: string) {
     const app = await this.db.application.findUnique({ where: { key: appKey } });
-    if (!app || !app.enabled) throw new UnauthorizedException('应用不存在或已停用');
+    if (!app || !app.enabled) throw new ServiceError('APPLICATION_UNAVAILABLE');
     if (authorization !== undefined) {
       const match = /^Bearer (md_[A-Za-z0-9_-]{43})$/i.exec(authorization);
       const key = match
         ? await this.db.apiKey.findUnique({ where: { hash: sha256(match[1]!) } })
         : null;
-      if (!key || key.revokedAt) throw new UnauthorizedException('API Key 无效或已撤销');
-      if (key.applicationId !== app.id) throw new ForbiddenException('API Key 不属于该应用');
-    } else if (app.authMode !== 'none')
-      throw new UnauthorizedException('请通过 Authorization: Bearer <API_KEY> 提供密钥');
+      if (!key || key.revokedAt) throw new ServiceError('API_KEY_INVALID');
+      if (key.applicationId !== app.id) throw new ServiceError('API_KEY_APP_MISMATCH');
+    } else if (app.authMode !== 'none') throw new ServiceError('API_KEY_REQUIRED');
     return app;
   }
   async accept(appId: string, input: NotificationInput, idempotencyKey: string) {
     if (!/^[\x21-\x7E]{1,200}$/.test(idempotencyKey))
-      throw new BadRequestException('Idempotency-Key 必须是 1–200 个可见 ASCII 字符');
+      throw new ServiceError('IDEMPOTENCY_KEY_INVALID');
+    if (
+      input.target.type === 'targets' &&
+      (input.target.ids ?? []).some((id) => !channelIdPattern.test(id))
+    )
+      throw new ServiceError(
+        'INVALID_ARGUMENT',
+        'target.ids 仅接受渠道短 ID（ch_ 加 12 位小写十六进制字符）',
+      );
     const app = await this.db.application.findUnique({ where: { id: appId } });
-    if (!app || !app.enabled) throw new ForbiddenException('应用已停用');
+    if (!app || !app.enabled) throw new ServiceError('APPLICATION_DISABLED');
     if (!(await this.redis.limit(`app-limit:${app.id}`, app.perMinuteLimit)))
-      throw new HttpException('应用发送频率超限', 429);
+      throw new ServiceError('RATE_LIMITED', '应用发送频率超限');
     const hash = requestHash({
       ...input,
       expires_in: input.expires_in ?? 3600,
@@ -59,7 +59,7 @@ export class NotificationsService {
       include: { _count: { select: { deliveries: true } } },
     });
     if (existing) {
-      if (existing.requestHash !== hash) throw new ConflictException('相同幂等键对应不同请求');
+      if (existing.requestHash !== hash) throw new ServiceError('IDEMPOTENCY_CONFLICT');
       return {
         notification_id: existing.id,
         status: 'accepted_for_processing',
@@ -68,23 +68,36 @@ export class NotificationsService {
       };
     }
     if (Boolean(input.message) === Boolean(input.template))
-      throw new BadRequestException('message 与 template 必须且只能提供一个');
+      throw new ServiceError('MESSAGE_SOURCE_INVALID');
     let ids: string[];
     if (input.target.type === 'topic') {
       const topic = await this.db.topic.findUnique({ where: { key: input.target.key ?? '' } });
-      if (!topic) throw new BadRequestException('主题不存在');
+      if (!topic) throw new ServiceError('TOPIC_NOT_FOUND');
       ids = topic.targetIds;
-    } else ids = input.target.ids ?? [];
+    } else {
+      const refs = [...new Set(input.target.ids ?? [])];
+      if (!refs.length || refs.length > 500) throw new ServiceError('TARGETS_INVALID');
+      const resolvedTargets = await this.db.target.findMany({
+        where: { channel: { shortId: { in: refs } } },
+        select: { id: true, channel: { select: { shortId: true } } },
+      });
+      ids = refs.map((ref) => {
+        const matches = resolvedTargets.filter((target) => target.channel.shortId === ref);
+        // Never select a default recipient when a channel has ambiguous targets.
+        if (matches.length !== 1) throw new ServiceError('TARGET_NOT_AUTHORIZED');
+        return matches[0]!.id;
+      });
+    }
     ids = [...new Set(ids)];
-    if (!ids.length || ids.length > 500) throw new BadRequestException('目标数量必须为 1–500');
+    if (!ids.length || ids.length > 500) throw new ServiceError('TARGETS_INVALID');
     if (ids.some((id) => !app.allowedTargetIds.includes(id)))
-      throw new ForbiddenException('应用无权访问目标');
+      throw new ServiceError('TARGET_NOT_AUTHORIZED');
     const targets = await this.db.target.findMany({
       where: { id: { in: ids } },
       include: { channel: true },
     });
     if (targets.length !== ids.length || targets.some((t) => !t.channel.enabled))
-      throw new BadRequestException('目标不存在或渠道已停用');
+      throw new ServiceError('TARGET_UNAVAILABLE');
     let text = input.message?.text ?? '';
     let versionId: string | undefined;
     if (input.template) {
@@ -93,12 +106,12 @@ export class NotificationsService {
         include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
       });
       const version = template?.versions[0];
-      if (!version) throw new BadRequestException('模板不存在');
+      if (!version) throw new ServiceError('TEMPLATE_NOT_FOUND');
       text = renderText(version.body, input.variables ?? {});
       versionId = version.id;
     }
     if (!text.trim() || Buffer.byteLength(text, 'utf8') > 2000)
-      throw new BadRequestException('消息不能为空且最多 2000 字节');
+      throw new ServiceError('MESSAGE_INVALID');
     for (const target of targets) {
       try {
         const descriptor = channelRegistry.get(
@@ -111,13 +124,13 @@ export class NotificationsService {
         )
           throw new Error('插件配置版本或消息能力不兼容');
       } catch {
-        throw new BadRequestException('目标插件版本不可用或不支持当前消息，请检查渠道');
+        throw new ServiceError('CHANNEL_PLUGIN_UNAVAILABLE');
       }
     }
     const queued = await this.db.delivery.count({
       where: { status: { in: ['pending', 'retry_wait', 'sending'] } },
     });
-    if (queued + ids.length > 100000) throw new HttpException('投递积压达到受理上限', 503);
+    if (queued + ids.length > 100000) throw new ServiceError('QUEUE_CAPACITY_EXCEEDED');
     const expiresAt = new Date(Date.now() + (input.expires_in ?? 3600) * 1000);
     try {
       return await this.db.$transaction(async (tx) => {
@@ -126,7 +139,6 @@ export class NotificationsService {
             applicationId: app.id,
             idempotencyKey,
             requestHash: hash,
-            event: input.event,
             expiresAt,
             snapshot: {
               text,
@@ -172,7 +184,7 @@ export class NotificationsService {
             delivery_count: notice._count.deliveries,
             idempotency_hit: true,
           };
-        throw new ConflictException('幂等请求冲突');
+        throw new ServiceError('IDEMPOTENCY_CONFLICT');
       }
       throw error;
     }
@@ -182,7 +194,6 @@ export class NotificationsService {
       where: { id, applicationId: appId },
       select: {
         id: true,
-        event: true,
         createdAt: true,
         expiresAt: true,
         deliveries: {
@@ -197,8 +208,8 @@ export class NotificationsService {
         },
       },
     });
-    if (!notification) throw new NotFoundException('通知不存在');
-    return notification;
+    if (!notification) throw new ServiceError('NOTIFICATION_NOT_FOUND');
+    return { ...notification, deliveries: notification.deliveries.map(deliveryView) };
   }
   async queryDeliveries(appId: string, id: string, cursor?: string) {
     await this.query(appId, id);
@@ -217,7 +228,10 @@ export class NotificationsService {
         createdAt: true,
       },
     });
-    return { items: items.slice(0, 50), nextCursor: items.length > 50 ? items[49]!.id : null };
+    return {
+      items: items.slice(0, 50).map(deliveryView),
+      nextCursor: items.length > 50 ? items[49]!.id : null,
+    };
   }
   async queryDelivery(appId: string, id: string) {
     const delivery = await this.db.delivery.findFirst({
@@ -233,13 +247,13 @@ export class NotificationsService {
         createdAt: true,
       },
     });
-    if (!delivery) throw new NotFoundException('投递不存在');
-    return delivery;
+    if (!delivery) throw new ServiceError('DELIVERY_NOT_FOUND');
+    return deliveryView(delivery);
   }
   async adminTest(applicationId: string, targetIds: string[], text: string, actor: string) {
     const result = await this.accept(
       applicationId,
-      { event: 'msgdock.test', target: { type: 'targets', ids: targetIds }, message: { text } },
+      { target: { type: 'targets', ids: targetIds }, message: { text } },
       `test-${randomUUID()}`,
     );
     await this.db.audit.create({

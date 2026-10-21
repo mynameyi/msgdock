@@ -1,11 +1,4 @@
 import 'reflect-metadata';
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  ValidationPipe,
-} from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -17,36 +10,9 @@ import { resolve } from 'node:path';
 import { DatabaseService, DeliveriesService, RedisService } from '@msgdock/server';
 import { AppModule } from './app.module';
 import { publicOpenApi } from './public-openapi';
+import { configureResponseContract, describeResponseContract } from './http/response-contract';
+import { ApiErrorDto } from './http/notification-responses';
 
-@Catch()
-class SafeErrors implements ExceptionFilter {
-  catch(exception: unknown, host: ArgumentsHost) {
-    const req = host.switchToHttp().getRequest<FastifyRequest>(),
-      reply = host.switchToHttp().getResponse<FastifyReply>();
-    let status = 500,
-      message: unknown = '服务暂时不可用';
-    const code = (exception as { code?: string }).code;
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const response = exception.getResponse();
-      message =
-        typeof response === 'string' ? response : (response as { message: unknown }).message;
-    } else if (code && ['P1001', 'P1002', 'P1017', 'P2024'].includes(code)) {
-      status = 503;
-      message = '数据服务暂时不可用，请稍后重试';
-    } else if (code === 'P2002') {
-      status = 409;
-      message = '标识已存在，请换一个名称或 Key';
-    } else if (code === 'P2025') {
-      status = 404;
-      message = '资源不存在';
-    } else if (code === 'P2023') {
-      status = 400;
-      message = '资源标识格式无效';
-    }
-    reply.code(status).send({ code: `HTTP_${status}`, message, request_id: req.id });
-  }
-}
 async function main() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
@@ -62,10 +28,7 @@ async function main() {
     { logger: ['error', 'warn', 'log'] },
   );
   await app.register(cookie);
-  app.useGlobalPipes(
-    new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
-  );
-  app.useGlobalFilters(new SafeErrors());
+  configureResponseContract(app);
   app.enableShutdownHooks();
   const server = app.getHttpAdapter().getInstance();
   server.addHook('onSend', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -97,7 +60,9 @@ async function main() {
         description: '仅为发送接口的匿名配置说明；实际以应用 authMode 为准',
       })
       .build(),
+    { extraModels: [ApiErrorDto] },
   );
+  describeResponseContract(document);
   // Empty security requirement expresses conditional anonymous access without inventing a second credential.
   const path = document.paths['/api/v1/apps/{appKey}/notifications'];
   if (path?.post) path.post.security = [{ bearer: [] }, {}];

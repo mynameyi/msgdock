@@ -30,6 +30,10 @@ MsgDock 0.2.0 采用核心引擎、渠道插件和稳定 SDK 的组织方式。�
 
 一个插件可创建多个渠道实例。群 Webhook 和智能机器人长连接按不同接入方式拆分，避免将不同生命周期堆在同一个实现内。
 
+当前每个渠道只有一个接收目标，创建和编辑时只填写“渠道名称”，例如“财务通知群”。目标显示名称自动沿用渠道名称，应用授权、主题路由和发送测试也显示该名称。Webhook、会话 ID 等实际发送参数仍由插件 Schema 配置；名称只是本地备注，不决定消息发往哪里。编辑已有渠道时保留目标 ID、应用授权与路由引用，历史投递快照不变。
+
+每个渠道实例由系统分配不可编辑的短 ID，例如 `ch_a7c92e4f6b18`（`ch_` 加 12 位小写十六进制字符）。渠道列表显示“渠道 ID”并支持复制，业务发送 API 的 `target.ids` 和控制台测试发送仅接受渠道短 ID，UUID 会被拒绝。短 ID 在实例内唯一，数据库唯一约束防止重复；新建时碰撞会重新分配，已有渠道在迁移时自动补齐，重命名或重启不会改变它。短 ID 不是凭证，发送仍受应用目标授权约束。当前短 ID 必须对应唯一接收目标，不会在多目标情况下猜测收件人。
+
 | 插件 ID | 包 | 当前版本 |
 | --- | --- | --- |
 | wecom.group_webhook | @msgdock/plugin-wecom-webhook | 1.0.0 |
@@ -127,7 +131,7 @@ SendOutcome 的含义为：
 
 ```json
 {
-  "name": "订单通知",
+  "name": "订单通知群",
   "type": "dingtalk.enterprise_bot",
   "pluginVersion": "1.0.0",
   "credentials": {
@@ -135,7 +139,6 @@ SendOutcome 的含义为：
     "appSecret": "YOUR_APP_SECRET",
     "robotCode": "YOUR_ROBOT_CODE"
   },
-  "targetName": "订单通知群",
   "targetConfig": { "openConversationId": "YOUR_CONVERSATION_ID" },
   "enabled": true
 }
@@ -143,7 +146,11 @@ SendOutcome 的含义为：
 
 新渠道不传 pluginVersion 时使用启动装配中该插件最后注册的版本；生产发布应显式维护装配顺序，客户端建议总是传精确版本。已有渠道不能直接修改插件 ID 或版本，升级采用新建渠道、调整授权和路由、排空旧任务的流程。0.1.0 的 openConversationId 顶层字段作为兼容别名保留，新客户端使用 targetConfig；同时提供时以 targetConfig 为准。
 
+创建和更新只需传 `name`，接收目标名称在保存时同步为该值。旧管理客户端的 `targetName` 字段仍可提交，但已弃用且不再生效；新客户端应省略它。本次调整不需要数据库迁移，已有渠道在下次保存时同步目标名称。
+
 ## 版本、迁移与发布
+
+业务及管理 HTTP 响应统一使用 code/message/data/request_id。投递查询在 data 内返回 status 与 error（code/message/source_code）；插件仍返回原 SendOutcome，数据库中的 lastCode/lastMessage 与发送尝试保留原始证据。核心在读模型中完成归一化，不要求插件跟随 HTTP 外层封装。接口约定和错误码见[响应规范](api-contract.md)，公开阅读入口为 `/docs/responses`。
 
 Channel 保存 type、pluginVersion、configVersion；Delivery 受理时固定 pluginId、pluginVersion、configVersion，重试和关联重发沿用原版本。凭证使用渠道当前有效密文，不复制明文凭证到任务快照。目标和正文沿用已固定快照。
 

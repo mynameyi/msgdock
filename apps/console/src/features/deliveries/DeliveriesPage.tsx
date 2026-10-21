@@ -115,11 +115,11 @@ export function DeliveriesPage() {
             scroll={{ x: 950 }}
             columns={[
               {
-                title: '通知 / 应用',
+                title: '接入应用',
                 render: (_, d: Delivery) => (
                   <>
-                    <b>{d.notification.event}</b>
-                    <span className="cell-secondary">{d.notification.application.name}</span>
+                    <b>{d.notification.application.name}</b>
+                    <span className="cell-secondary">{d.notification.application.key}</span>
                   </>
                 ),
               },
@@ -216,8 +216,13 @@ export function DeliveriesPage() {
                     label: '配置结构版本',
                     children: detail.data.configVersion,
                   },
-                  { key: 'error', label: '处理结果', children: detail.data.lastMessage ?? '—' },
-                  { key: 'code', label: '结果代码', children: detail.data.lastCode ?? '—' },
+                  { key: 'error', label: '处理结果', children: detail.data.error?.message ?? '—' },
+                  { key: 'code', label: '结果代码', children: detail.data.error?.code ?? '—' },
+                  {
+                    key: 'source',
+                    label: '插件原始代码',
+                    children: detail.data.error?.source_code ?? '—',
+                  },
                   {
                     key: 'replay',
                     label: '关联重发来源',

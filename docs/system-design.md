@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.5 |
+| 文档版本 | v0.6 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 架构基线与演进目标；0.2.0 加入可信内置渠道插件 |
 | 仓库 | [mynameyi/msgdock](https://github.com/mynameyi/msgdock) |
@@ -305,6 +305,10 @@ Controller 不直接调用 Prisma 或平台 SDK；队列 Processor 与 HTTP Cont
 - **目标**：注册的群、用户、部门或平台会话，绑定所属渠道实例及可发送范围。
 - **主题**：业务使用的逻辑接收集合，例如 finance；路由到一个或多个已授权目标。
 
+当前实现每个渠道实例只有一个接收目标，控制台仅要求填写渠道名称，内部目标在创建和保存时沿用此名称。应用授权、路由和发送测试使用渠道名称展示目标，实际平台地址仍由插件的凭证和目标配置决定。重命名保留目标 ID 与既有授权、路由引用，不修改历史投递快照；未来支持一渠道多目标时再提供独立目标管理。
+
+渠道实例另有对外短 ID（`ch_` 加 12 位小写十六进制字符），系统生成并持久化，实例内唯一且重命名不变。列表提供复制入口，通知 API 的 target.ids 及控制台测试发送仅接受渠道短 ID；短 ID 解析后按内部目标 UUID 复核授权、去重和生成投递快照。数据库通过唯一约束保证不重复，新建碰撞重试整个事务。迁移为已有渠道补齐短 ID，不替换主键或既有引用。
+
 平台用户 ID、会话 ID、媒体 ID 均在对应企业、应用或渠道实例的命名空间内使用。不同应用中的同名用户 ID 不默认视为同一身份。
 
 ### 8.2 接入类型与计划
@@ -374,7 +378,7 @@ Channel 固定插件版本与配置结构版本；Delivery 在受理时固定插
 | ConnectionLease | 需要长连接的渠道实例、持有者、租约期限和递增 epoch；按渠道阶段启用 |
 | Target / Topic / Route | 已注册目标、逻辑主题和路由关系；包含应用授权 |
 | Template / TemplateVersion | 模板标识、不可变版本、变量定义与渲染内容 |
-| Notification | 应用、事件、原始受理时间、期限、固定快照、关联标识 |
+| Notification | 应用、原始受理时间、期限、固定快照、关联标识 |
 | Delivery | 固定插件 ID / 版本 / 配置结构版本、目标和渠道、状态、期限、调度代次、下次执行时间、执行租约与可选 ordering_key |
 | DeliveryAttempt | 每次真实发送的请求标识、起止时间、分类结果和平台消息 ID |
 | IdempotencyRecord | 工作空间、应用、操作、幂等键、请求摘要、通知 ID、保留期限 |
@@ -505,13 +509,12 @@ accepted 的语义是平台接受，MsgDock 不承诺所有渠道端到端恰好
 ```http
 POST /api/v1/apps/order-service/notifications
 Authorization: Bearer <application-api-key>
-Idempotency-Key: order-paid-20261020-001
 Content-Type: application/json
 ```
 
 ```json
 {
-  "event": "order.paid",
+  "idempotency_key": "order-paid-20261020-001",
   "target": {
     "type": "topic",
     "key": "finance"
@@ -524,8 +527,7 @@ Content-Type: application/json
     "amount": "299.00",
     "detail_url": "https://example.com/orders/20261020001"
   },
-  "expires_in": 3600,
-  "priority": "normal"
+  "expires_in": 3600
 }
 ```
 
@@ -533,14 +535,19 @@ Content-Type: application/json
 
 ```json
 {
-  "notification_id": "69886e70-60e4-4b8f-81f9-fec706eabaf2",
-  "status": "accepted_for_processing",
-  "delivery_count": 2,
+  "code": "OK",
+  "message": "通知已受理",
+  "data": {
+    "notification_id": "69886e70-60e4-4b8f-81f9-fec706eabaf2",
+    "status": "accepted_for_processing",
+    "delivery_count": 2,
+    "idempotency_hit": false
+  },
   "request_id": "req_example"
 }
 ```
 
-accepted_for_processing 表示 MsgDock 已可靠受理，与 Delivery 的平台 accepted 状态分开。重复受理返回原通知 ID，并通过响应元数据标识幂等命中。
+accepted_for_processing 表示 MsgDock 已可靠受理，与 Delivery 的平台 accepted 状态分开。重复受理返回原通知 ID，并通过 data.idempotency_hit 标识幂等命中。idempotency_key 为 JSON 必填字段；旧请求头不再参与幂等判断，计算业务摘要前拆出该字段。通知请求、响应与数据库不保留 event 字段；旧幂等键及摘要继续保留，升级后的请求若与旧摘要不同则返回 409，不重置去重记录。
 
 非鉴权模式使用相同路径、请求体、幂等规则及响应格式，省略 Authorization 请求头。服务端仅依据已保存的应用配置决定是否允许，不接受通过请求参数或请求头临时关闭鉴权。无论模式如何，始终限制该应用可访问的主题与目标，并执行速率、积压和消息大小限制。
 
@@ -548,9 +555,11 @@ OpenAPI 使用 HTTP bearer 安全方案描述 API Key（type: http、scheme: bea
 
 ### 11.2 错误与版本
 
-错误采用统一的 code、message、request_id、受控 details 结构。校验失败用 400，缺失或无效 API Key 用 401，凭证与应用或操作范围不匹配用 403，能力或模板语义不满足用 422，幂等冲突或不可取消状态用 409，速率限制用 429，数据库不可用或超过受理积压上限用 503；事务未确认成功不得返回 202。
+业务与管理接口统一返回 code、message、data、request_id；接口成功 code=OK，失败 data=null，参数校验时附带受控 details。校验或模板语义不满足用 400，缺失或无效 API Key 用 401，凭证与应用或操作范围不匹配用 403，幂等冲突或不可取消状态用 409，速率限制用 429，数据库不可用或超过受理积压上限用 503；事务未确认成功不得返回 202。错误码由显式 ServiceError 与错误码目录提供，不根据中文文案匹配，不再只用 HTTP_403 这类粗粒度代码。
 
-公开契约使用 /api/v1，枚举和错误码保持稳定；列表采用游标分页并限制页大小。首版 JSON 请求体默认上限为 64 KiB，单次通知默认最多展开 500 条 Delivery，超限分别返回 413 或 422；这些保护参数可在受控范围内调整，不替代平台自身的消息大小限制。
+接口结果与异步投递结果分层：查询 HTTP 200 / code=OK 时，data 内的投递仍可能 failed 或 unknown。投递模型使用 status 与 error，error 包含 MsgDock code、说明 message 和插件原始 source_code；内部 lastCode/lastMessage 与发送尝试证据保留原存储。网络超时可能没有响应 JSON，调用方复用原业务键重试或查询；unknown 需先核实，不据此自动重发。完整契约与升级说明见[响应规范与错误码](api-contract.md)，公开页面为 `/docs/responses`。
+
+公开契约使用 /api/v1，枚举和错误码保持稳定；列表采用游标分页并限制页大小。首版 JSON 请求体默认上限为 64 KiB，单次通知默认最多展开 500 条 Delivery，超限分别返回 413 或 400；这些保护参数可在受控范围内调整，不替代平台自身的消息大小限制。
 
 OpenAPI 在 CI 生成、检查并同步 api-client，前端请求参数和响应类型取自生成结果。内部数据库实体、密文和平台原始响应不直接序列化为公开 DTO。
 

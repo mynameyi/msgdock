@@ -34,17 +34,39 @@ describe('public developer contract', () => {
     visit(published);
     expect(full.paths['/api/admin/applications']).toBeDefined();
     expect(full.components!.schemas!.LoginDto).toBeDefined();
+    expect(JSON.stringify(published)).not.toContain('"event"');
   });
-  it('describes the idempotency header once and provides usable exclusive message examples', () => {
+  it('requires the JSON idempotency key and documents response envelopes', () => {
+    expect(published.components!.schemas!.TargetDto).toMatchObject({
+      properties: { ids: { items: { type: 'string', pattern: '^ch_[0-9a-f]{12}$' } } },
+    });
     const post = published.paths['/api/v1/apps/{appKey}/notifications']!.post!;
     const headers = post.parameters!.filter((p) => 'in' in p && p.in === 'header');
-    expect(headers).toHaveLength(1);
-    expect(headers[0]).toMatchObject({ name: 'idempotency-key', required: true });
+    expect(headers).toHaveLength(0);
+    expect(published.components!.schemas!.NotificationDto).toMatchObject({
+      required: expect.arrayContaining(['idempotency_key']),
+    });
+    expect(post.responses['202']).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            required: expect.arrayContaining(['code', 'message', 'data', 'request_id']),
+            properties: { data: { $ref: '#/components/schemas/AcceptedNotificationDto' } },
+          },
+        },
+      },
+    });
     const body = post.requestBody!;
     expect('content' in body).toBe(true);
     if ('content' in body) {
       const examples = body.content['application/json']!.examples!;
-      expect(examples.text).toMatchObject({ value: { message: { text: '订单支付成功。' } } });
+      expect(examples.text).toMatchObject({
+        value: {
+          idempotency_key: expect.any(String),
+          target: { ids: ['ch_a7c92e4f6b18'] },
+          message: { text: '订单支付成功。' },
+        },
+      });
       expect(examples.template).toMatchObject({ value: { template: { key: 'order_paid' } } });
     }
   });

@@ -49,12 +49,12 @@ export function OverviewPage() {
       : (data?.days ?? []).map((p) => ({ label: dayjs(p.time).format('MM/DD'), count: p.count }));
   const columns = [
     {
-      title: '通知 / 应用',
-      key: 'event',
+      title: '接入应用',
+      key: 'application',
       render: (_: unknown, d: Delivery) => (
         <div>
-          <b>{d.notification.event}</b>
-          <span className="cell-secondary">{d.notification.application.name}</span>
+          <b>{d.notification.application.name}</b>
+          <span className="cell-secondary">{d.notification.application.key}</span>
         </div>
       ),
     },
@@ -291,7 +291,7 @@ export function OverviewPage() {
                 variant="borderless"
               />
             </div>
-            <pre className="api-code">{`POST /api/v1/apps/${app?.key ?? '{app_key}'}/notifications\n${app?.authMode === 'none' ? '' : 'Authorization: Bearer <API_KEY>\n'}Content-Type: application/json\nIdempotency-Key: <UNIQUE_KEY>\n\n{ "event": "order.paid", ... }`}</pre>
+            <pre className="api-code">{`POST /api/v1/apps/${app?.key ?? '{app_key}'}/notifications\n${app?.authMode === 'none' ? '' : 'Authorization: Bearer <API_KEY>\n'}Content-Type: application/json\n\n{ "idempotency_key": "<UNIQUE_EVENT_ID>", ... }`}</pre>
             <p className="small muted">
               {app?.authMode === 'none'
                 ? '该应用已显式关闭发送鉴权。查询与后台管理仍需认证。'

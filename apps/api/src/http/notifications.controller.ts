@@ -8,21 +8,17 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  Req,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
-  ApiHeader,
   ApiOperation,
   ApiParam,
   ApiResponse,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { FastifyRequest } from 'fastify';
-import { NotificationsService } from '@msgdock/server';
+import { NotificationsService, ServiceError } from '@msgdock/server';
 import { NotificationDto } from './dto';
 import {
   AcceptedNotificationDto,
@@ -50,20 +46,14 @@ export class NotificationsController {
   @ApiOperation({
     summary: '受理通知（默认需要 Bearer API Key；仅显式关闭鉴权的应用允许匿名发送）',
   })
-  @ApiHeader({
-    name: 'idempotency-key',
-    required: true,
-    description: '应用内唯一，1–200 个可见 ASCII 字符',
-    example: 'replace-with-your-unique-event-id',
-  })
   @ApiBody({
     type: NotificationDto,
     examples: {
       text: {
-        summary: '文本消息（替换目标 UUID）',
+        summary: '文本消息（从渠道列表复制渠道 ID）',
         value: {
-          event: 'order.paid',
-          target: { type: 'targets', ids: ['00000000-0000-4000-8000-000000000001'] },
+          idempotency_key: 'order-paid-20261021-001',
+          target: { type: 'targets', ids: ['ch_a7c92e4f6b18'] },
           message: { text: '订单支付成功。' },
           expires_in: 3600,
         },
@@ -71,7 +61,7 @@ export class NotificationsController {
       template: {
         summary: '主题与模板（先在控制台创建）',
         value: {
-          event: 'order.paid',
+          idempotency_key: 'order-paid-20261021-002',
           target: { type: 'topic', key: 'finance' },
           template: { key: 'order_paid' },
           variables: { order_no: '20261021001', amount: '299.00' },
@@ -90,15 +80,11 @@ export class NotificationsController {
   async create(
     @Param('appKey') key: string,
     @Headers('authorization') auth: string | undefined,
-    @Headers('idempotency-key') idempotencyKey: string,
     @Body() body: NotificationDto,
-    @Req() req: FastifyRequest,
   ) {
     const app = await this.service.authenticate(key, auth);
-    return {
-      ...(await this.service.accept(app.id, body, idempotencyKey ?? '')),
-      request_id: req.id,
-    };
+    const { idempotency_key, ...input } = body;
+    return this.service.accept(app.id, input, idempotency_key);
   }
   @Get('notifications/:id')
   @ApiBearerAuth()
@@ -113,7 +99,7 @@ export class NotificationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Headers('authorization') auth?: string,
   ) {
-    if (!auth) throw new UnauthorizedException('结果查询需要 API Key');
+    if (!auth) throw new ServiceError('API_KEY_REQUIRED', '结果查询需要 API Key');
     const app = await this.service.authenticate(key, auth);
     return this.service.query(app.id, id);
   }
@@ -137,7 +123,7 @@ export class NotificationsController {
     @Headers('authorization') auth?: string,
     @Query('cursor') cursor?: string,
   ) {
-    if (!auth) throw new UnauthorizedException('结果查询需要 API Key');
+    if (!auth) throw new ServiceError('API_KEY_REQUIRED', '结果查询需要 API Key');
     const app = await this.service.authenticate(key, auth);
     return this.service.queryDeliveries(app.id, id, cursor);
   }
@@ -151,7 +137,7 @@ export class NotificationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Headers('authorization') auth?: string,
   ) {
-    if (!auth) throw new UnauthorizedException('结果查询需要 API Key');
+    if (!auth) throw new ServiceError('API_KEY_REQUIRED', '结果查询需要 API Key');
     const app = await this.service.authenticate(key, auth);
     return this.service.queryDelivery(app.id, id);
   }

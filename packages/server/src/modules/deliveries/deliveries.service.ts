@@ -1,13 +1,9 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Module,
-  NotFoundException,
-} from '@nestjs/common';
+import { ServiceError } from '../../errors';
+import { Injectable, Module } from '@nestjs/common';
 import { Prisma } from '@msgdock/database';
 import { channelRegistry } from '@msgdock/channels';
 import { DatabaseService } from '../../infrastructure';
+import { deliveryView } from './view';
 
 @Injectable()
 export class DeliveriesService {
@@ -33,11 +29,14 @@ export class DeliveriesService {
         replayOfDeliveryId: true,
         channelId: true,
         notification: {
-          select: { event: true, application: { select: { id: true, name: true, key: true } } },
+          select: { application: { select: { id: true, name: true, key: true } } },
         },
       },
     });
-    return { items: rows.slice(0, 50), nextCursor: rows.length > 50 ? rows[49]!.id : null };
+    return {
+      items: rows.slice(0, 50).map(deliveryView),
+      nextCursor: rows.length > 50 ? rows[49]!.id : null,
+    };
   }
   async detail(id: string) {
     const result = await this.db.delivery.findUnique({
@@ -47,8 +46,8 @@ export class DeliveriesService {
         notification: { include: { application: { select: { name: true, key: true } } } },
       },
     });
-    if (!result) throw new NotFoundException('投递不存在');
-    return result;
+    if (!result) throw new ServiceError('DELIVERY_NOT_FOUND');
+    return deliveryView(result);
   }
   async cancel(id: string, actor: string) {
     return this.db.$transaction(async (tx) => {
@@ -56,7 +55,8 @@ export class DeliveriesService {
         where: { id, status: { in: ['pending', 'retry_wait'] } },
         data: { status: 'cancelled', generation: { increment: 1 } },
       });
-      if (!result.count) throw new ConflictException('只有排队或等待重试的投递可以取消');
+      if (!result.count)
+        throw new ServiceError('DELIVERY_STATE_CONFLICT', '只有排队或等待重试的投递可以取消');
       await tx.audit.create({
         data: { actor, action: 'delivery.cancel', resource: id, details: {} },
       });
@@ -69,19 +69,19 @@ export class DeliveriesService {
         where: { id },
         include: { notification: { include: { application: true } } },
       });
-      if (!source) throw new NotFoundException('投递不存在');
+      if (!source) throw new ServiceError('DELIVERY_NOT_FOUND');
       if (!['failed', 'expired', 'unknown', 'cancelled'].includes(source.status))
-        throw new ConflictException('当前状态不允许重发');
+        throw new ServiceError('DELIVERY_STATE_CONFLICT', '当前状态不允许重发');
       if (source.status === 'unknown' && !confirmed)
-        throw new BadRequestException('请先核实重复风险并明确确认');
+        throw new ServiceError('DELIVERY_CONFIRMATION_REQUIRED');
       const app = source.notification.application;
       if (!app.enabled || !app.allowedTargetIds.includes(source.targetId))
-        throw new BadRequestException('应用已停用或目标授权已撤回');
+        throw new ServiceError('APPLICATION_ACCESS_REVOKED');
       const target = await tx.target.findUnique({
         where: { id: source.targetId },
         include: { channel: true },
       });
-      if (!target?.channel.enabled) throw new BadRequestException('目标渠道已停用');
+      if (!target?.channel.enabled) throw new ServiceError('CHANNEL_DISABLED');
       try {
         const descriptor = channelRegistry.get(source.pluginId, source.pluginVersion).descriptor;
         if (
@@ -91,7 +91,10 @@ export class DeliveriesService {
         )
           throw new Error('插件配置版本不兼容');
       } catch {
-        throw new BadRequestException('原投递的插件版本不可用；请使用当前渠道重新创建通知');
+        throw new ServiceError(
+          'CHANNEL_PLUGIN_UNAVAILABLE',
+          '原投递的插件版本不可用；请使用当前渠道重新创建通知',
+        );
       }
       const fresh = await tx.delivery.create({
         data: {
@@ -130,7 +133,8 @@ export class DeliveriesService {
           lastMessage: '管理员核实平台已接受',
         },
       });
-      if (!result.count) throw new ConflictException('仅支持核实结果待确认的投递');
+      if (!result.count)
+        throw new ServiceError('DELIVERY_STATE_CONFLICT', '仅支持核实结果待确认的投递');
       await tx.audit.create({
         data: { actor, action: 'delivery.resolve', resource: id, details: { reason } },
       });

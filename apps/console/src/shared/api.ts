@@ -15,10 +15,11 @@ export type Target = {
   name: string;
   channelId: string;
   config: Record<string, unknown>;
-  channel: { name: string; type: string; enabled: boolean };
+  channel: { name: string; shortId: string; type: string; enabled: boolean };
 };
 export type Channel = {
   id: string;
+  shortId: string;
   name: string;
   type: string;
   pluginVersion: string;
@@ -41,11 +42,10 @@ export type Delivery = {
   targetName: string;
   attemptCount: number;
   createdAt: string;
-  lastCode: string | null;
-  lastMessage: string | null;
+  error: { code: string; message: string; source_code: string | null } | null;
   channelId: string;
   replayOfDeliveryId: string | null;
-  notification: { event: string; application: { id: string; name: string; key: string } };
+  notification: { application: { id: string; name: string; key: string } };
 };
 export const statusNames: Record<string, string> = {
   pending: '排队中',

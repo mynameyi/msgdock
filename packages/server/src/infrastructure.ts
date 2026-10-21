@@ -1,11 +1,5 @@
-import {
-  Global,
-  Injectable,
-  Module,
-  OnModuleDestroy,
-  OnModuleInit,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { ServiceError } from './errors';
+import { Global, Injectable, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@msgdock/database';
 import Redis from 'ioredis';
 import {
@@ -72,7 +66,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       );
       return Number(result) <= limit;
     } catch {
-      throw new ServiceUnavailableException('队列协调服务暂时不可用，请稍后重试');
+      throw new ServiceError('COORDINATION_UNAVAILABLE');
     }
   }
 }

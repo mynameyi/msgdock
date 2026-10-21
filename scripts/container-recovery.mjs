@@ -14,20 +14,20 @@ const publicHeaders = {
 async function notice() {
   const response = await fetch(`${state.base}/api/v1/apps/${state.appKey}/notifications`, {
     method: 'POST',
-    headers: { ...publicHeaders, 'Idempotency-Key': randomUUID() },
+    headers: publicHeaders,
     body: JSON.stringify({
-      event: 'recovery.verification',
-      target: { type: 'targets', ids: [state.targetId] },
+      idempotency_key: randomUUID(),
+      target: { type: 'targets', ids: [state.channelShortId] },
       message: { text: 'queue recovery ' + randomUUID() },
     }),
   });
   assert.equal(response.status, 202);
-  const data = await response.json();
+  const data = (await response.json()).data;
   const result = await fetch(
     `${state.base}/api/v1/apps/${state.appKey}/notifications/${data.notification_id}`,
     { headers: publicHeaders },
   );
-  return { id: data.notification_id, delivery: (await result.json()).deliveries[0] };
+  return { id: data.notification_id, delivery: (await result.json()).data.deliveries[0] };
 }
 async function deferred() {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -51,7 +51,7 @@ for (let n = 0; n < 50; n++) {
     `${state.base}/api/v1/apps/${state.appKey}/notifications/${recover.id}`,
     { headers: publicHeaders },
   );
-  const data = await response.json();
+  const data = (await response.json()).data;
   if (data.deliveries[0].status === 'accepted') {
     assert.equal(data.deliveries[0].attemptCount, 1);
     recovered = true;
@@ -71,7 +71,7 @@ const response = await fetch(
   `${state.base}/api/v1/apps/${state.appKey}/notifications/${cancelled.id}`,
   { headers: publicHeaders },
 );
-const data = await response.json();
+const data = (await response.json()).data;
 assert.equal(data.deliveries[0].status, 'cancelled');
 assert.equal(data.deliveries[0].attemptCount, 0);
 const unavailable = await deferred();
@@ -98,9 +98,10 @@ for (let n = 0; n < 40; n++) {
     `${state.base}/api/v1/apps/${state.appKey}/notifications/${unavailable.id}`,
     { headers: publicHeaders },
   );
-  const notice = await result.json();
+  const notice = (await result.json()).data;
   if (notice.deliveries[0].status === 'failed') {
-    assert.equal(notice.deliveries[0].lastCode, 'plugin_unavailable');
+    assert.equal(notice.deliveries[0].error.code, 'CHANNEL_PLUGIN_UNAVAILABLE');
+    assert.equal(notice.deliveries[0].error.source_code, 'plugin_unavailable');
     assert.equal(notice.deliveries[0].attemptCount, 0);
     versionRejected = true;
     break;

@@ -546,6 +546,10 @@ export interface components {
             perMinuteLimit: number;
         };
         ChannelDto: {
+            /**
+             * @description 渠道名称，同时作为接收目标的显示名称
+             * @example 财务通知群
+             */
             name: string;
             /** @description 已注册渠道插件的稳定 ID，通过 channel-plugins 查询 */
             type: string;
@@ -561,7 +565,11 @@ export interface components {
             };
             /** @default true */
             enabled: boolean;
-            targetName: string;
+            /**
+             * @deprecated
+             * @description 仅兼容旧客户端；此字段不再生效，接收目标名称统一使用 name
+             */
+            targetName?: string;
             /**
              * @deprecated
              * @description 0.1.0 兼容字段；新客户端使用 targetConfig
@@ -585,14 +593,26 @@ export interface components {
         };
         TestSendDto: {
             applicationId: string;
+            /** @description 渠道列表中的渠道短 ID */
             targetIds: string[];
             text: string;
         };
         ApiErrorDto: {
-            /** @example HTTP_401 */
+            /** @example TARGET_NOT_AUTHORIZED */
             code: string;
-            message: string | string[];
+            /** @example 应用无权访问目标 */
+            message: string;
+            /**
+             * @example null
+             * @enum {object|null}
+             */
+            data: never | null;
             request_id: string;
+            /** @description 参数校验错误的字段明细，不包含请求值或凭证 */
+            details?: {
+                field: string;
+                message: string;
+            }[];
         };
         TargetDto: {
             /**
@@ -602,9 +622,9 @@ export interface components {
              */
             type: "targets" | "topic";
             /**
-             * @description type=targets 时填写实际目标 UUID，最多 500 个
+             * @description type=targets 时仅接受渠道 ID（ch_ 加 12 位小写十六进制字符），可从渠道列表复制。最多 500 个，重复 ID 去重。
              * @example [
-             *       "00000000-0000-4000-8000-000000000001"
+             *       "ch_a7c92e4f6b18"
              *     ]
              */
             ids?: string[];
@@ -625,8 +645,11 @@ export interface components {
             key: string;
         };
         NotificationDto: {
-            /** @example order.paid */
-            event: string;
+            /**
+             * @description 应用内唯一的业务通知标识。同一请求重试复用原值；新通知使用新值。
+             * @example order-paid-20261021-001
+             */
+            idempotency_key: string;
             target: components["schemas"]["TargetDto"];
             /** @description 直接文本消息；message 与 template 必须且只能提供一个 */
             message?: components["schemas"]["TextDto"];
@@ -648,7 +671,17 @@ export interface components {
             status: "accepted_for_processing";
             delivery_count: number;
             idempotency_hit: boolean;
-            request_id: string;
+        };
+        DeliveryErrorDto: {
+            /**
+             * @description MsgDock 归一化的投递原因码
+             * @example DELIVERY_FAILED
+             */
+            code: string;
+            /** @example 平台业务校验未通过，请检查凭证、权限或消息规则 */
+            message: string;
+            /** @description 插件/平台原始原因码；不同插件取值可能不同 */
+            source_code: string | null;
         };
         DeliverySummaryDto: {
             /** Format: uuid */
@@ -660,13 +693,12 @@ export interface components {
             status: "pending" | "sending" | "retry_wait" | "accepted" | "failed" | "unknown" | "expired" | "cancelled";
             targetName: string;
             attemptCount: number;
-            lastCode?: string | null;
-            lastMessage?: string | null;
+            /** @description 投递业务结果；正常、取消状态为 null。与外层接口 code 独立。 */
+            error: components["schemas"]["DeliveryErrorDto"] | null;
         };
         NotificationResultDto: {
             /** Format: uuid */
             id: string;
-            event: string;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -683,8 +715,8 @@ export interface components {
             status: "pending" | "sending" | "retry_wait" | "accepted" | "failed" | "unknown" | "expired" | "cancelled";
             targetName: string;
             attemptCount: number;
-            lastCode?: string | null;
-            lastMessage?: string | null;
+            /** @description 投递业务结果；正常、取消状态为 null。与外层接口 code 独立。 */
+            error: components["schemas"]["DeliveryErrorDto"] | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -703,8 +735,8 @@ export interface components {
             status: "pending" | "sending" | "retry_wait" | "accepted" | "failed" | "unknown" | "expired" | "cancelled";
             targetName: string;
             attemptCount: number;
-            lastCode?: string | null;
-            lastMessage?: string | null;
+            /** @description 投递业务结果；正常、取消状态为 null。与外层接口 code 独立。 */
+            error: components["schemas"]["DeliveryErrorDto"] | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -732,7 +764,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -749,7 +798,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -770,7 +836,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -791,7 +874,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -808,7 +908,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -829,7 +946,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -846,7 +980,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -867,7 +1018,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -890,7 +1058,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -909,7 +1094,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -929,7 +1131,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -946,7 +1165,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -967,7 +1203,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -984,7 +1237,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1007,7 +1277,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1024,7 +1311,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1041,7 +1345,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1062,7 +1383,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1085,7 +1423,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1102,7 +1457,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1123,7 +1495,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1146,7 +1535,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1163,7 +1569,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1180,7 +1603,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1201,7 +1641,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1220,7 +1677,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1239,7 +1713,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1262,7 +1753,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1285,7 +1793,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1306,7 +1831,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1323,17 +1865,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
     NotificationsController_create: {
         parameters: {
             query?: never;
-            header: {
-                /** @description 应用内唯一，1–200 个可见 ASCII 字符 */
-                "idempotency-key": string;
-            };
+            header?: never;
             path: {
                 /** @description 控制台中配置的接入应用 Key */
                 appKey: string;
@@ -1352,7 +1908,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AcceptedNotificationDto"];
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: components["schemas"]["AcceptedNotificationDto"];
+                        request_id: string;
+                    };
                 };
             };
             /** @description 参数、目标、消息或幂等键无效 */
@@ -1409,6 +1971,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
         };
     };
     NotificationsController_get: {
@@ -1431,7 +2002,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NotificationResultDto"];
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: components["schemas"]["NotificationResultDto"];
+                        request_id: string;
+                    };
                 };
             };
             /** @description 参数、目标、消息或幂等键无效 */
@@ -1472,6 +2049,15 @@ export interface operations {
             };
             /** @description 服务暂时不可用或投递积压达到受理上限 */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1504,7 +2090,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeliveryPageDto"];
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: components["schemas"]["DeliveryPageDto"];
+                        request_id: string;
+                    };
                 };
             };
             /** @description 参数、目标、消息或幂等键无效 */
@@ -1552,6 +2144,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
         };
     };
     NotificationsController_delivery: {
@@ -1574,7 +2175,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeliveryResultDto"];
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: components["schemas"]["DeliveryResultDto"];
+                        request_id: string;
+                    };
                 };
             };
             /** @description 参数、目标、消息或幂等键无效 */
@@ -1615,6 +2222,15 @@ export interface operations {
             };
             /** @description 服务暂时不可用或投递积压达到受理上限 */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

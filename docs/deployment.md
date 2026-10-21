@@ -45,11 +45,13 @@ docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build
 
 ## 接入与鉴权
 
-1. 添加企业微信群机器人、飞书群机器人或钉钉企业机器人。每个渠道创建一个注册目标；钉钉填写群的 OpenConversationId。
+1. 添加企业微信群机器人、飞书群机器人或钉钉企业机器人。每个渠道创建一个注册目标，列表中的“渠道 ID”支持复制并可直接填入通知 API 的 target.ids；钉钉另需填写群的 OpenConversationId。
 2. 创建接入应用，选择可发送的目标，鉴权默认开启。
 3. 为应用生成 API Key；完整值只显示一次。业务服务端使用 `Authorization: Bearer <API_KEY>` 请求头。
 4. 需要非鉴权发送时，在该应用中显式选择“非鉴权发送”。无效 Key 不会自动降级；后台管理与结果查询始终认证。
-5. 使用测试发送检查配置，再从接口文档复制完整请求示例。所有发送都要求 Idempotency-Key。
+5. 使用测试发送检查配置，再从接口文档复制完整请求示例。所有业务发送都要求 JSON 的 idempotency_key；同一业务重试复用原值。API Key 仍在 Authorization 请求头中。
+
+业务和管理接口统一返回 code/message/data/request_id，业务结果从 data 读取。HTTP 202 表示持久化受理，查询 HTTP 200 / code=OK 与投递成功相互独立。具体约定见[响应与错误码](api-contract.md)，公开页面为 `/docs/responses`。升级时同步更新调用方：旧 Idempotency-Key 头不再提供幂等参数；投递原因从 error 读取。保留已有数据卷和主密钥。
 
 企业微信与飞书仅接受对应官方 HTTPS Webhook URL；钉钉使用固定官方 OpenAPI 端点。应用调用方不能提交任意外部地址。
 
@@ -61,7 +63,11 @@ docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build
 
 从 0.1.0 升级时，启动迁移会为现有渠道补充插件版本 1.0.0 / 配置结构版本 1，并从原渠道类型回填历史投递的插件 ID。凭证密文、会话和 API Key 保留，旧任务继续绑定原版本。升级前备份数据库和原密钥；验证渠道、历史任务和队列恢复后再接入新流量。
 
+渠道短 ID 迁移 `202610210002_channel_short_ids` 会为已有渠道自动分配 `ch_` 加 12 位小写十六进制字符的唯一 ID，并设置新渠道的生成规则。数据库内部的渠道和目标 UUID、应用授权、主题路由、历史投递与密钥保持不变。API、Worker 及 Prisma Client 需由新镜像一并更新；容器启动时先完成迁移。通知 API 的 target.ids 及控制台测试发送仅接受渠道短 ID，调用方应从渠道列表复制 ID，UUID 请求返回参数校验错误。
+
 已有渠道不能直接改插件 ID 或版本。升级采用新建渠道、重新授权和调整主题路由、排空旧任务、停用旧渠道的流程。移除内置插件前检查所有关联渠道和待执行任务；缺失的原版本不会静默换成当前版本，任务会明确失败。注册表支持同时保留多个版本，便于旧任务排空。
+
+移除 `event` 的迁移 `202610210003_remove_notification_event` 会删除 `Notification.event` 列，请求、查询响应和控制台不再使用事件类型。升级前备份数据库；其他通知字段、投递、渠道及授权保持不变。旧幂等记录继续保留，摘要不匹配时仍返回 409，详见[响应规范](api-contract.md)。
 
 ## HTTPS 与访问地址
 

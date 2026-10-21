@@ -11,26 +11,25 @@ assert.equal(response.status, 200, 'session persisted');
 const headers = {
   'Content-Type': 'application/json',
   Authorization: `Bearer ${state.apiKey}`,
-  'Idempotency-Key': randomUUID(),
 };
 response = await fetch(`${state.base}/api/v1/apps/${state.appKey}/notifications`, {
   method: 'POST',
   headers,
   body: JSON.stringify({
-    event: 'restart.verification',
-    target: { type: 'targets', ids: [state.targetId] },
+    idempotency_key: randomUUID(),
+    target: { type: 'targets', ids: [state.channelShortId] },
     message: { text: 'container restart verification ' + randomUUID() },
   }),
 });
 assert.equal(response.status, 202);
-const notification = await response.json();
+const notification = (await response.json()).data;
 for (let attempt = 0; attempt < 40; attempt++) {
   response = await fetch(
     `${state.base}/api/v1/apps/${state.appKey}/notifications/${notification.notification_id}`,
     { headers: { Authorization: `Bearer ${state.apiKey}` } },
   );
   assert.equal(response.status, 200);
-  const notice = await response.json();
+  const notice = (await response.json()).data;
   if (notice.deliveries[0].status === 'accepted') {
     assert.equal(notice.deliveries[0].attemptCount, 1);
     console.log(

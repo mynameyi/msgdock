@@ -12,6 +12,7 @@ export function PublicLayout() {
       '/docs/plugins': '渠道插件开发 · MsgDock',
       '/docs/swagger': 'Swagger UI · MsgDock',
       '/docs/redoc': 'ReDoc · MsgDock',
+      '/docs/responses': '响应与错误 · MsgDock',
     };
     document.title = titles[pathname] ?? 'MsgDock 信港';
     window.scrollTo(0, 0);

@@ -26,19 +26,35 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code: string = 'REQUEST_FAILED',
+    readonly requestId?: string,
+    readonly details?: { field: string; message: string }[],
   ) {
     super(message);
   }
 }
 export function unwrap<T>(result: { data?: unknown; error?: unknown; response: Response }): T {
-  if (!result.response.ok) {
-    const error = result.error as { message?: string | string[] } | undefined;
+  const payload = (result.response.ok ? result.data : result.error) as
+    | {
+        code?: string;
+        message?: string;
+        data?: unknown;
+        request_id?: string;
+        details?: { field: string; message: string }[];
+      }
+    | undefined;
+  if (!result.response.ok || (payload?.code && payload.code !== 'OK')) {
     throw new ApiError(
-      Array.isArray(error?.message)
-        ? error.message.join('；')
-        : (error?.message ?? '请求失败，请重试'),
+      payload?.details?.length
+        ? payload.details.map((issue) => issue.message).join('；')
+        : (payload?.message ?? '请求失败，请重试'),
       result.response.status,
+      payload?.code ?? 'REQUEST_FAILED',
+      payload?.request_id,
+      payload?.details,
     );
   }
-  return result.data as T;
+  if (payload?.code !== 'OK' || !Object.hasOwn(payload, 'data'))
+    throw new ApiError('接口响应格式无效', result.response.status, 'INVALID_RESPONSE');
+  return payload.data as T;
 }

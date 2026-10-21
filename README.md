@@ -6,6 +6,8 @@ MsgDock 是面向 Web 系统的开源多渠道 IM 消息推送引擎，旨在通
 
 > 当前版本：**0.2.0 渠道插件化**。已实现管理控制台、应用鉴权、通知投递与可信内置插件，提供一个 Docker 镜像、一个容器的部署方式。真实 IM 平台仍需要配置已授权的机器人凭证；模拟平台验证不代表已完成真实企业环境联调。
 
+渠道列表提供可复制的唯一短 ID（如 `ch_a7c92e4f6b18`），通知 API 的 `target.ids` 仅接受此格式。ID 在重命名后保持不变，已有渠道在启动迁移时自动补齐。
+
 ## 快速启动
 
 需要支持 Linux 容器的 Docker。克隆本仓库后运行：
@@ -22,6 +24,8 @@ docker exec msgdock cat /data/secrets/setup-token
 
 [部署、升级与备份](docs/deployment.md) · [0.2.0 版本说明](docs/releases/v0.2.0.md) · [渠道插件开发](docs/channel-plugins.md) · [OpenAPI 契约](docs/openapi.json)
 
+发送通知时，将幂等键放在 JSON 的 `idempotency_key` 字段。API 统一返回 `code/message/data/request_id`，业务结果从 `data` 读取；接口调用结果与异步投递结果分别表达。旧客户端需同步升级，详见[响应规范与错误码](docs/api-contract.md)。
+
 ## 设计文档
 
 - [系统设计文档](docs/system-design.md)：技术栈、前后端代码组织、模块边界、消息投递、数据模型、安全与部署设计。
@@ -36,6 +40,7 @@ docker exec msgdock cat /data/secrets/setup-token
 | `/docs` | API 快速接入 | 公开 |
 | `/docs/swagger` | Swagger UI 在线调试 | 页面公开；调用接口按应用规则鉴权 |
 | `/docs/redoc` | ReDoc 接口参考 | 公开 |
+| `/docs/responses` | 统一响应、错误码与升级说明 | 公开 |
 | `/docs/plugins` | 渠道插件开发约定 | 公开 |
 | `/openapi.json` | 通知发送与查询的 OpenAPI | 公开，不含后台接口及其专用模型 |
 | `/console`、`/console/*` | 管理控制台 | 初始化或管理员登录 |
@@ -70,7 +75,7 @@ Swagger UI 与 ReDoc 共用服务端生成的公开契约，依赖资源随镜�
 业务系统 → 统一 API → 消息与投递任务 → 后台 Worker → 插件注册中心 / 宿主执行器 → 渠道插件 → IM 平台
 ```
 
-业务系统提交业务事件、接收目标和模板数据；核心负责路由、渲染、投递及结果追踪。每种接入方式是独立插件包，声明配置、目标、消息能力和实例限额；控制台根据插件目录生成表单。官方插件随镜像构建和启动注册，当前支持 HTTP 文本；WebSocket 或长轮询渠道后续接入。
+业务系统提交接收目标、消息内容或模板数据；核心负责路由、渲染、投递及结果追踪。每种接入方式是独立插件包，声明配置、目标、消息能力和实例限额；控制台根据插件目录生成表单。官方插件随镜像构建和启动注册，当前支持 HTTP 文本；WebSocket 或长轮询渠道后续接入。
 
 ## 开发路线
 

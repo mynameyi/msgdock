@@ -182,7 +182,7 @@ export function ApplicationsPage() {
               placeholder="选择已配置的目标"
               options={targets.data?.map((t) => ({
                 value: t.id,
-                label: `${t.name} · ${t.channel.name}`,
+                label: `${t.channel.name} · ${t.channel.shortId}`,
               }))}
             />
           </Form.Item>

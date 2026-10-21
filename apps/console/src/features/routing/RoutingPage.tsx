@@ -59,7 +59,7 @@ export function RoutingPage() {
                 render: (_, t: Topic) =>
                   t.targetIds.map((id) => (
                     <Tag key={id}>
-                      {targets.data?.find((x) => x.id === id)?.name ?? '目标已失效'}
+                      {targets.data?.find((x) => x.id === id)?.channel.name ?? '目标已失效'}
                     </Tag>
                   )),
               },
@@ -106,7 +106,7 @@ export function RoutingPage() {
             <Select
               mode="multiple"
               options={targets.data?.map((t) => ({
-                label: `${t.name} · ${t.channel.name}`,
+                label: `${t.channel.name} · ${t.channel.shortId}`,
                 value: t.id,
               }))}
             />

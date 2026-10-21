@@ -1,10 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Module,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ServiceError } from '../../errors';
+import { Injectable, Module } from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
 import {
   DatabaseService,
@@ -27,11 +22,11 @@ export class IdentityService {
   }
   async setup(username: string, password: string, token: string) {
     if (!secretEqual(this.secrets.setupToken(), token))
-      throw new UnauthorizedException('初始化令牌无效');
+      throw new ServiceError('SETUP_TOKEN_INVALID');
     const passwordHash = await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
     await this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(7042301)`;
-      if (await tx.user.count()) throw new ConflictException('系统已经完成初始化');
+      if (await tx.user.count()) throw new ServiceError('ALREADY_INITIALIZED');
       await tx.user.create({ data: { username, passwordHash } });
       await tx.audit.create({
         data: { actor: username, action: 'identity.setup', resource: 'workspace', details: {} },
@@ -41,12 +36,12 @@ export class IdentityService {
   }
   async login(username: string, password: string, ip: string) {
     if (!(await this.redis.limit(`login:${sha256(ip)}`, 10, 300000)))
-      throw new UnauthorizedException('尝试次数过多，请稍后再试');
+      throw new ServiceError('RATE_LIMITED', '尝试次数过多，请稍后再试');
     const user = await this.db.user.findUnique({ where: { username } });
     const dummy =
       '$argon2id$v=19$m=19456,t=2,p=1$hTLSSJ8EJSjZJmEmuFkKJQ$Ajqzay7NSIpzrxZzWP26Aeza3S3vCTog2orazV/cvE0';
     const valid = await verify(user?.passwordHash ?? dummy, password).catch(() => false);
-    if (!user || !valid) throw new UnauthorizedException('用户名或密码错误');
+    if (!user || !valid) throw new ServiceError('LOGIN_FAILED');
     const token = randomSecret(),
       csrfToken = randomSecret();
     await this.db.session.create({
@@ -82,7 +77,7 @@ export class IdentityService {
   ) {
     const user = await this.db.user.findUnique({ where: { id: userId } });
     if (!user || !(await verify(user.passwordHash, oldPassword).catch(() => false)))
-      throw new BadRequestException('原密码不正确');
+      throw new ServiceError('PASSWORD_INVALID');
     const passwordHash = await hash(newPassword, {
       memoryCost: 19456,
       timeCost: 2,

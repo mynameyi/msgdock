@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { channelIdPattern } from '@msgdock/contracts';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -46,7 +47,10 @@ export class ApplicationDto {
   @ApiProperty({ default: 60 }) @IsInt() @Min(1) @Max(10000) perMinuteLimit: number = 60;
 }
 export class ChannelDto {
-  @ApiProperty() @IsString() @Length(1, 80) name!: string;
+  @ApiProperty({ description: '渠道名称，同时作为接收目标的显示名称', example: '财务通知群' })
+  @IsString()
+  @Length(1, 80)
+  name!: string;
   @ApiProperty({ description: '已注册渠道插件的稳定 ID，通过 channel-plugins 查询' })
   @IsString()
   @Matches(/^[a-z][a-z0-9_.-]{1,99}$/)
@@ -72,7 +76,14 @@ export class ChannelDto {
   @IsObject()
   targetConfig?: Record<string, unknown>;
   @ApiProperty({ default: true }) @IsBoolean() enabled: boolean = true;
-  @ApiProperty() @IsString() @Length(1, 80) targetName!: string;
+  @ApiPropertyOptional({
+    deprecated: true,
+    description: '仅兼容旧客户端；此字段不再生效，接收目标名称统一使用 name',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  targetName?: string;
   @ApiPropertyOptional({
     deprecated: true,
     description: '0.1.0 兼容字段；新客户端使用 targetConfig',
@@ -107,13 +118,16 @@ export class TargetDto {
   type!: 'targets' | 'topic';
   @ApiPropertyOptional({
     type: [String],
-    example: ['00000000-0000-4000-8000-000000000001'],
-    description: 'type=targets 时填写实际目标 UUID，最多 500 个',
+    example: ['ch_a7c92e4f6b18'],
+    maxItems: 500,
+    items: { type: 'string', pattern: channelIdPattern.source },
+    description:
+      'type=targets 时仅接受渠道 ID（ch_ 加 12 位小写十六进制字符），可从渠道列表复制。最多 500 个，重复 ID 去重。',
   })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(500)
-  @IsUUID('4', { each: true })
+  @Matches(channelIdPattern, { each: true })
   ids?: string[];
   @ApiPropertyOptional({ example: 'finance', description: 'type=topic 时填写主题 Key' })
   @IsOptional()
@@ -134,10 +148,16 @@ export class TemplateRefDto {
   @ApiProperty() @IsString() @MaxLength(50) key!: string;
 }
 export class NotificationDto {
-  @ApiProperty({ example: 'order.paid', minLength: 1, maxLength: 100 })
+  @ApiProperty({
+    description: '应用内唯一的业务通知标识。同一请求重试复用原值；新通知使用新值。',
+    example: 'order-paid-20261021-001',
+    minLength: 1,
+    maxLength: 200,
+    pattern: '^[\\x21-\\x7E]{1,200}$',
+  })
   @IsString()
-  @Length(1, 100)
-  event!: string;
+  @Matches(/^[\x21-\x7E]{1,200}$/)
+  idempotency_key!: string;
   @ApiProperty({ type: TargetDto })
   @IsDefined()
   @ValidateNested()
@@ -177,10 +197,14 @@ export class NotificationDto {
 }
 export class TestSendDto {
   @ApiProperty() @IsUUID('4') applicationId!: string;
-  @ApiProperty({ type: [String] })
+  @ApiProperty({
+    type: [String],
+    description: '渠道列表中的渠道短 ID',
+    items: { type: 'string', pattern: channelIdPattern.source },
+  })
   @IsArray()
   @ArrayMaxSize(500)
-  @IsUUID('4', { each: true })
+  @Matches(channelIdPattern, { each: true })
   targetIds!: string[];
   @ApiProperty() @IsString() @Length(1, 2000) text!: string;
 }

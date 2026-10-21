@@ -68,7 +68,10 @@ export function TestSend({ open, onClose }: { open: boolean; onClose: () => void
             placeholder="先选择应用，再选择其授权目标"
             options={targets.data
               ?.filter((t) => application?.allowedTargetIds.includes(t.id) && t.channel.enabled)
-              .map((t) => ({ label: `${t.name} · ${t.channel.name}`, value: t.id }))}
+              .map((t) => ({
+                label: `${t.channel.name} · ${t.channel.shortId}`,
+                value: t.channel.shortId,
+              }))}
           />
         </Form.Item>
         <Form.Item label="消息内容" name="text" rules={[{ required: true }]}>

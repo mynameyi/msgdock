@@ -7,8 +7,7 @@ export function DocsPage() {
     `curl -X POST '${location.origin}/api/v1/apps/<APP_KEY>/notifications'`,
     "  -H 'Authorization: Bearer <API_KEY>'",
     "  -H 'Content-Type: application/json'",
-    "  -H 'Idempotency-Key: <UNIQUE_EVENT_ID>'",
-    `  -d '${JSON.stringify({ event: 'order.paid', target: { type: 'targets', ids: ['<TARGET_ID>'] }, message: { text: '订单支付成功。' }, expires_in: 3600 }, null, 2)}'`,
+    `  -d '${JSON.stringify({ idempotency_key: '<UNIQUE_EVENT_ID>', target: { type: 'targets', ids: ['ch_a7c92e4f6b18'] }, message: { text: '订单支付成功。' }, expires_in: 3600 }, null, 2)}'`,
   ].join(' \\\n');
   return (
     <>
@@ -60,8 +59,13 @@ export function DocsPage() {
         </Typography.Paragraph>
         <p className="muted">
           管理员先在<Link to="/console">管理控制台</Link>
-          配置渠道、应用和授权目标。以下均为占位示例，请替换
-          APP_KEY、API_KEY、TARGET_ID，并为新事件生成唯一幂等键。
+          配置渠道、应用和授权目标。渠道列表中的“渠道 ID”支持一键复制，直接填入 target.ids；例如
+          ch_a7c92e4f6b18。以下示例需替换 APP_KEY、API_KEY 和渠道 ID，并为新事件生成唯一幂等键。
+          幂等键放在 JSON 的 idempotency_key 字段，同一次业务通知重试时复用原值。
+        </p>
+        <p className="muted">
+          发送目标仅接受渠道短 ID，由系统自动生成，重命名后保持不变。短 ID 不是 API
+          Key，发送仍受应用目标授权约束。
         </p>
         <Typography.Paragraph copyable={{ text: example }}>
           <pre className="api-code">{example}</pre>
@@ -80,7 +84,7 @@ export function DocsPage() {
         <pre className="api-code">
           {JSON.stringify(
             {
-              event: 'order.paid',
+              idempotency_key: '<UNIQUE_EVENT_ID>',
               target: { type: 'topic', key: 'finance' },
               template: { key: 'order_paid' },
               variables: { order_no: '20261020001', amount: '299.00' },
@@ -91,8 +95,55 @@ export function DocsPage() {
           )}
         </pre>
         <p className="muted">
-          同一个应用内，重复提交相同 Idempotency-Key 与相同请求返回原通知；不同请求返回
+          同一个应用内，重复提交相同 idempotency_key 与相同请求返回原通知；不同请求返回
           409。主题内每个目标都必须在应用的授权范围内。
+        </p>
+      </Card>
+      <Card title="响应与错误处理" className="mt20">
+        <p>
+          <Link to="/docs/responses">完整响应规范、错误码与升级说明 →</Link>
+        </p>
+        <p>
+          所有业务 API 与管理 API 统一返回 code、message、data、request_id。HTTP
+          状态码保留原有语义；参数、鉴权或受理失败时 data 为 null，按稳定的 code 判断原因。
+        </p>
+        <pre className="api-code">
+          {JSON.stringify(
+            {
+              code: 'OK',
+              message: '通知已受理',
+              data: {
+                notification_id: '<NOTIFICATION_ID>',
+                status: 'accepted_for_processing',
+                delivery_count: 1,
+                idempotency_hit: false,
+              },
+              request_id: '<REQUEST_ID>',
+            },
+            null,
+            2,
+          )}
+        </pre>
+        <p>
+          HTTP 202 与 code=OK 表示持久化受理。HTTP 200 与 code=OK 表示查询成功；实际投递状态在
+          data.deliveries 中，每个目标包含 status 与 error。失败投递不会让查询本身变成接口错误。
+        </p>
+        <pre className="api-code">
+          {JSON.stringify(
+            {
+              code: 'TARGET_NOT_AUTHORIZED',
+              message: '应用无权访问目标',
+              data: null,
+              request_id: '<REQUEST_ID>',
+            },
+            null,
+            2,
+          )}
+        </pre>
+        <p>
+          参数校验失败返回 VALIDATION_ERROR，并在 details 中说明字段。HTTP 409 与
+          IDEMPOTENCY_CONFLICT 表示幂等键对应的请求内容发生变化。通信超时可能没有 JSON；请保留原
+          idempotency_key 重试或查询。投递为 unknown 时先核实结果，避免直接重发。
         </p>
       </Card>
     </>

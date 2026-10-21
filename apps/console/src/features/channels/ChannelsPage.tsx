@@ -14,6 +14,7 @@ import {
   Switch,
   Table,
   Tag,
+  Typography,
 } from 'antd';
 import { ApiOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
 import { getChannelPlugins, getChannels, saveChannel } from './api';
@@ -44,7 +45,6 @@ export function ChannelsPage() {
           credentials: v.credentials ?? {},
           targetConfig: v.targetConfig ?? {},
           enabled: v.enabled,
-          targetName: v.targetName,
         },
         editing?.id,
       );
@@ -70,7 +70,6 @@ export function ChannelsPage() {
             name: c.name,
             plugin: `${c.type}@${c.pluginVersion}`,
             enabled: c.enabled,
-            targetName: c.targets[0]?.name,
             targetConfig: c.targets[0]?.config ?? {},
             credentials: {},
           }
@@ -147,6 +146,15 @@ export function ChannelsPage() {
             columns={[
               { title: '渠道名称', dataIndex: 'name', render: (v) => <b>{v}</b> },
               {
+                title: '渠道 ID',
+                dataIndex: 'shortId',
+                render: (id: string) => (
+                  <Typography.Text code copyable={{ text: id }} title="用于推送 API 的 target.ids">
+                    {id}
+                  </Typography.Text>
+                ),
+              },
+              {
                 title: '渠道插件',
                 render: (_, c: Channel) => (
                   <>
@@ -157,7 +165,6 @@ export function ChannelsPage() {
                   </>
                 ),
               },
-              { title: '接收目标', render: (_, c: Channel) => c.targets[0]?.name ?? '—' },
               {
                 title: '最近发送状态',
                 render: (_, c: Channel) => (
@@ -221,7 +228,7 @@ export function ChannelsPage() {
         )}
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <Form.Item name="name" label="渠道名称" rules={[{ required: true }]}>
-            <Input placeholder="订单通知机器人" maxLength={80} />
+            <Input placeholder="例如：财务通知群" maxLength={80} />
           </Form.Item>
           <Form.Item name="plugin" label="渠道插件" rules={[{ required: true }]}>
             <Select
@@ -249,9 +256,6 @@ export function ChannelsPage() {
               />
             </>
           )}
-          <Form.Item name="targetName" label="目标名称" rules={[{ required: true }]}>
-            <Input placeholder="财务通知群" maxLength={80} />
-          </Form.Item>
           {plugin && (
             <PluginFields
               schema={plugin.targetSchema}

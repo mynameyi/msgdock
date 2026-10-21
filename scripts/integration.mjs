@@ -14,7 +14,8 @@ const setupToken = process.env.TEST_SETUP_TOKEN ?? local.MSGDOCK_SETUP_TOKEN;
 let cookie = '',
   csrf = '';
 let checks = 0;
-async function request(path, { method = 'GET', body, auth, headers = {} } = {}) {
+async function request(path, { method = 'GET', body, auth, idempotencyKey, headers = {} } = {}) {
+  if (idempotencyKey !== undefined) body = { ...body, idempotency_key: idempotencyKey };
   const response = await fetch(base + path, {
     method,
     headers: {
@@ -26,8 +27,13 @@ async function request(path, { method = 'GET', body, auth, headers = {} } = {}) 
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  const data = await response.json();
-  return { response, data };
+  const envelope = await response.json();
+  assert.equal(typeof envelope.code, 'string');
+  assert.equal(typeof envelope.message, 'string');
+  assert.equal(envelope.request_id, response.headers.get('x-request-id'));
+  if (response.ok) assert.equal(envelope.code, 'OK');
+  else assert.equal(envelope.data, null);
+  return { response, data: response.ok ? envelope.data : envelope, envelope };
 }
 const expectStatus = (result, expected) => {
   assert.equal(result.response.status, expected, JSON.stringify(result.data));
@@ -93,7 +99,7 @@ for (const body of [
   expectStatus(
     await request('/api/admin/channels', {
       method: 'POST',
-      body: { name: '插件校验', enabled: true, targetName: '无发送校验目标', ...body },
+      body: { name: '插件校验', enabled: true, ...body },
     }),
     400,
   );
@@ -119,32 +125,36 @@ expectStatus(
     body: {
       name: 'bad',
       type: 'wecom.group_webhook',
-      targetName: 'bad',
       enabled: true,
       credentials: { webhookUrl: 'https://127.0.0.1/send' },
     },
   }),
   400,
 );
-const channel = await admin('/channels', {
+const channelBody = {
   name: '集成测试渠道',
   type: 'mock',
-  targetName: '测试接收目标',
   enabled: true,
   credentials: {},
   pluginVersion: '1.0.0',
   targetConfig: {},
-});
+};
+const channel = await admin('/channels', channelBody);
 const channels = expectStatus(await request('/api/admin/channels'), 200);
 assert(!JSON.stringify(channels).includes('credentials'));
 checks++;
 const savedChannel = channels.find((c) => c.id === channel.id);
 assert.equal(savedChannel.pluginVersion, '1.0.0');
 assert.equal(savedChannel.configVersion, 1);
-checks += 2;
+assert.match(savedChannel.shortId, /^ch_[0-9a-f]{12}$/);
+assert.equal(channel.shortId, savedChannel.shortId);
+assert.equal(new Set(channels.map((c) => c.shortId)).size, channels.length);
+checks += 5;
 const target = expectStatus(await request('/api/admin/targets'), 200).find(
   (t) => t.channelId === channel.id,
 );
+assert.equal(target.name, channelBody.name);
+checks++;
 const suffix = randomUUID().slice(0, 8);
 const appBody = {
   name: '订单服务',
@@ -156,25 +166,122 @@ const appBody = {
 const app = await admin('/applications', appBody);
 assert.equal(app.authMode, 'api_key');
 checks++;
+const topic = await admin('/topics', {
+  name: '渠道重命名验证',
+  key: `rename-${suffix}`,
+  targetIds: [target.id],
+});
+const renamedChannel = await admin(
+  `/channels/${channel.id}`,
+  { ...channelBody, name: '集成测试通知群', targetName: '旧客户端名称不再生效' },
+  'PUT',
+);
+assert.equal(renamedChannel.shortId, channel.shortId);
+const renamedTargets = expectStatus(await request('/api/admin/targets'), 200).filter(
+  (t) => t.channelId === channel.id,
+);
+assert.equal(renamedTargets.length, 1);
+assert.equal(renamedTargets[0].id, target.id);
+assert.equal(renamedTargets[0].name, '集成测试通知群');
+assert.deepEqual(renamedTargets[0].config, target.config);
+assert.equal(renamedTargets[0].channel.shortId, channel.shortId);
+const savedApp = expectStatus(await request('/api/admin/applications'), 200).find(
+  (a) => a.id === app.id,
+);
+assert.deepEqual(savedApp.allowedTargetIds, [target.id]);
+const savedTopic = expectStatus(await request('/api/admin/topics'), 200).find(
+  (t) => t.id === topic.id,
+);
+assert.deepEqual(savedTopic.targetIds, [target.id]);
+checks += 8;
 const other = await admin('/applications', {
   ...appBody,
   name: '另一应用',
   key: `other-${suffix}`,
+  allowedTargetIds: [],
 });
 const key = (await admin(`/applications/${app.id}/keys`)).key;
 const otherKey = (await admin(`/applications/${other.id}/keys`)).key;
 const endpoint = `/api/v1/apps/${app.key}/notifications`;
 const text = 'integration ' + suffix;
 const payload = {
-  event: 'order.paid',
-  target: { type: 'targets', ids: [target.id] },
+  target: { type: 'targets', ids: [channel.shortId] },
   message: { text },
 };
+const legacyOnly = await request(endpoint, {
+  method: 'POST',
+  body: payload,
+  auth: `Bearer ${key}`,
+  headers: { 'Idempotency-Key': 'legacy-only' },
+});
+assert.equal(expectStatus(legacyOnly, 400).code, 'VALIDATION_ERROR');
+assert(legacyOnly.data.details.some((issue) => issue.field === 'idempotency_key'));
+const retiredEvent = await request(endpoint, {
+  method: 'POST',
+  body: { ...payload, event: 'retired' },
+  auth: `Bearer ${key}`,
+  idempotencyKey: randomUUID(),
+});
+assert.equal(expectStatus(retiredEvent, 400).code, 'VALIDATION_ERROR');
+const deniedTarget = await request(`/api/v1/apps/${other.key}/notifications`, {
+  method: 'POST',
+  body: payload,
+  auth: `Bearer ${otherKey}`,
+  idempotencyKey: 'unauthorized-target',
+});
+assert.equal(expectStatus(deniedTarget, 403).code, 'TARGET_NOT_AUTHORIZED');
+const missingChannel = await request(endpoint, {
+  method: 'POST',
+  body: { ...payload, target: { type: 'targets', ids: ['ch_000000000000'] } },
+  auth: `Bearer ${key}`,
+  idempotencyKey: randomUUID(),
+});
+assert.equal(expectStatus(missingChannel, 403).code, 'TARGET_NOT_AUTHORIZED');
+for (const refs of [
+  ['ch_short'],
+  [channel.id],
+  [target.id],
+  [channel.shortId, target.id],
+  ['bad-id'],
+]) {
+  const invalidRef = await request(endpoint, {
+    method: 'POST',
+    body: { ...payload, target: { type: 'targets', ids: refs } },
+    auth: `Bearer ${key}`,
+    idempotencyKey: randomUUID(),
+  });
+  assert.equal(expectStatus(invalidRef, 400).code, 'VALIDATION_ERROR');
+}
+for (const refs of [[channel.shortId], [channel.shortId, channel.shortId]]) {
+  const result = expectStatus(
+    await request(endpoint, {
+      method: 'POST',
+      body: { ...payload, target: { type: 'targets', ids: refs } },
+      auth: `Bearer ${key}`,
+      idempotencyKey: randomUUID(),
+    }),
+    202,
+  );
+  assert.equal(result.delivery_count, 1);
+  checks++;
+}
+const rejectedTest = await request('/api/admin/notifications/test', {
+  method: 'POST',
+  body: { applicationId: app.id, targetIds: [target.id], text: 'UUID 不应触发测试发送' },
+});
+assert.equal(expectStatus(rejectedTest, 400).code, 'VALIDATION_ERROR');
+const testNotice = await admin('/notifications/test', {
+  applicationId: app.id,
+  targetIds: [channel.shortId],
+  text: '渠道短 ID 测试发送',
+});
+assert.equal(testNotice.delivery_count, 1);
+checks++;
 expectStatus(
   await request(endpoint, {
     method: 'POST',
     body: payload,
-    headers: { 'idempotency-key': 'missing-key' },
+    idempotencyKey: 'missing-key',
   }),
   401,
 );
@@ -183,16 +290,16 @@ expectStatus(
     method: 'POST',
     body: payload,
     auth: `Bearer ${otherKey}`,
-    headers: { 'idempotency-key': 'cross-app' },
+    idempotencyKey: 'cross-app',
   }),
   403,
 );
 expectStatus(
   await request(endpoint, {
     method: 'POST',
-    body: { event: 'bad' },
+    body: {},
     auth: `Bearer ${key}`,
-    headers: { 'idempotency-key': 'invalid-body' },
+    idempotencyKey: 'invalid-body',
   }),
   400,
 );
@@ -203,27 +310,32 @@ const repeated = await Promise.all(
       method: 'POST',
       body: payload,
       auth: `Bearer ${key}`,
-      headers: { 'idempotency-key': idem },
+      idempotencyKey: idem,
     }),
   ),
 );
 const accepted = repeated.map((r) => expectStatus(r, 202));
 assert.equal(new Set(accepted.map((x) => x.notification_id)).size, 1);
 checks++;
-expectStatus(
-  await request(endpoint, {
-    method: 'POST',
-    body: { ...payload, event: 'different' },
-    auth: `Bearer ${key}`,
-    headers: { 'idempotency-key': idem },
-  }),
-  409,
+assert.equal(
+  expectStatus(
+    await request(endpoint, {
+      method: 'POST',
+      body: { ...payload, message: { text: 'different message' } },
+      auth: `Bearer ${key}`,
+      idempotencyKey: idem,
+    }),
+    409,
+  ).code,
+  'IDEMPOTENCY_CONFLICT',
 );
 const success = await waitForNotice(app.key, key, accepted[0].notification_id, (ds) =>
   ds.every((d) => d.status === 'accepted'),
 );
 assert.equal(success.deliveries.length, 1);
 assert.equal(success.deliveries[0].attemptCount, 1);
+assert.equal(success.deliveries[0].error, null);
+assert.equal(Object.hasOwn(success, 'event'), false);
 checks += 2;
 expectStatus(
   await request(`/api/v1/apps/${other.key}/notifications/${success.id}`, {
@@ -241,12 +353,19 @@ const send = async (text) =>
       method: 'POST',
       body: { ...payload, message: { text } },
       auth: `Bearer ${key}`,
-      headers: { 'idempotency-key': randomUUID() },
+      idempotencyKey: randomUUID(),
     }),
     202,
   );
 const failed = await send('mock:failed ' + suffix);
-await waitForNotice(app.key, key, failed.notification_id, (ds) => ds[0].status === 'failed');
+const failureResult = await waitForNotice(
+  app.key,
+  key,
+  failed.notification_id,
+  (ds) => ds[0].status === 'failed',
+);
+assert.equal(failureResult.deliveries[0].error.code, 'DELIVERY_FAILED');
+assert.equal(typeof failureResult.deliveries[0].error.source_code, 'string');
 const uncertain = await send('mock:unknown ' + suffix);
 const unknown = await waitForNotice(
   app.key,
@@ -254,6 +373,7 @@ const unknown = await waitForNotice(
   uncertain.notification_id,
   (ds) => ds[0].status === 'unknown',
 );
+assert.equal(unknown.deliveries[0].error.code, 'DELIVERY_RESULT_UNKNOWN');
 expectStatus(
   await request(`/api/admin/deliveries/${unknown.deliveries[0].id}/replays`, {
     method: 'POST',
@@ -288,13 +408,12 @@ const templated = expectStatus(
   await request(endpoint, {
     method: 'POST',
     body: {
-      event: 'template.test',
       target: { type: 'topic', key: `finance_${suffix.replaceAll('-', '')}` },
       template: { key: template.key },
       variables: { order_no: 'NO-001', amount: 299 },
     },
     auth: `Bearer ${key}`,
-    headers: { 'idempotency-key': randomUUID() },
+    idempotencyKey: randomUUID(),
   }),
   202,
 );
@@ -324,7 +443,7 @@ expectStatus(
   await request(endpoint, {
     method: 'POST',
     body: payload,
-    headers: { 'idempotency-key': randomUUID() },
+    idempotencyKey: randomUUID(),
   }),
   202,
 );
@@ -333,7 +452,7 @@ expectStatus(
     method: 'POST',
     body: payload,
     auth: 'Bearer invalid',
-    headers: { 'idempotency-key': randomUUID() },
+    idempotencyKey: randomUUID(),
   }),
   401,
 );
@@ -343,7 +462,7 @@ expectStatus(
   await request(endpoint, {
     method: 'POST',
     body: payload,
-    headers: { 'idempotency-key': randomUUID() },
+    idempotencyKey: randomUUID(),
   }),
   401,
 );
@@ -354,7 +473,7 @@ expectStatus(
     method: 'POST',
     body: payload,
     auth: `Bearer ${rotate.key}`,
-    headers: { 'idempotency-key': randomUUID() },
+    idempotencyKey: randomUUID(),
   }),
   401,
 );
@@ -364,6 +483,7 @@ assert(!JSON.stringify(appList).includes('hash'));
 checks += 2;
 const overview = expectStatus(await request('/api/admin/overview'), 200);
 assert(overview.total >= 6);
+assert(overview.recent.every((d) => !Object.hasOwn(d.notification, 'event')));
 checks++;
 const system = expectStatus(await request('/api/admin/system'), 200);
 assert(system.workerReady && system.redisReady);
@@ -378,6 +498,7 @@ if (process.env.TEST_STATE_OUTPUT)
       appKey: app.key,
       applicationId: app.id,
       targetId: target.id,
+      channelShortId: channel.shortId,
       apiKey: key,
       cookie,
       csrf,
@@ -403,6 +524,9 @@ console.log(
       'overview and worker heartbeat',
       'plugin catalog and schema validation',
       'pinned plugin and configuration versions',
+      'stable unique channel short IDs and UUID rejection',
+      'short-ID authorization, deduplication and console test sends',
+      'event-free sending, queries and retired-field rejection',
     ],
   }),
 );

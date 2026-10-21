@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
+import { ServiceError } from '../../errors';
+import { Injectable, Module } from '@nestjs/common';
 import { ConfigValues } from '@msgdock/plugin-sdk';
 import { channelRegistry } from '@msgdock/channels';
 import { Prisma } from '@msgdock/database';
@@ -20,7 +21,6 @@ export interface ChannelInput {
   credentials: ConfigValues;
   targetConfig?: ConfigValues;
   enabled: boolean;
-  targetName: string;
   openConversationId?: string;
 }
 @Injectable()
@@ -42,7 +42,7 @@ export class ConfigurationService {
   }
   async saveApplication(input: ApplicationInput, actor: string, id?: string) {
     if (!(await this.repository.targetsExist(input.allowedTargetIds)))
-      throw new BadRequestException('目标不存在');
+      throw new ServiceError('TARGET_UNAVAILABLE', '目标不存在');
     const record = await this.db.$transaction(async (tx) => {
       const app = id
         ? await tx.application.update({ where: { id }, data: input })
@@ -61,7 +61,7 @@ export class ConfigurationService {
   }
   async createKey(id: string, actor: string) {
     const app = await this.db.application.findUnique({ where: { id } });
-    if (!app) throw new NotFoundException('应用不存在');
+    if (!app) throw new ServiceError('APPLICATION_NOT_FOUND');
     const key = `md_${randomSecret()}`;
     const record = await this.db.$transaction(async (tx) => {
       const created = await tx.apiKey.create({
@@ -91,6 +91,7 @@ export class ConfigurationService {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
+        shortId: true,
         name: true,
         type: true,
         pluginVersion: true,
@@ -111,10 +112,10 @@ export class ConfigurationService {
     let pluginVersion = input.pluginVersion;
     if (id) {
       const old = await this.db.channel.findUnique({ where: { id } });
-      if (!old) throw new NotFoundException('渠道不存在');
-      if (old.type !== input.type) throw new BadRequestException('已有渠道不能修改类型');
+      if (!old) throw new ServiceError('CHANNEL_NOT_FOUND');
+      if (old.type !== input.type) throw new ServiceError('CHANNEL_TYPE_IMMUTABLE');
       if (pluginVersion && old.pluginVersion !== pluginVersion)
-        throw new BadRequestException('已有渠道不能直接切换插件版本；请创建新渠道并排空旧任务');
+        throw new ServiceError('CHANNEL_VERSION_IMMUTABLE');
       pluginVersion = old.pluginVersion;
       credentials = {
         ...this.secrets.decrypt<ConfigValues>(old.credentials),
@@ -132,46 +133,61 @@ export class ConfigurationService {
       plugin = channelRegistry.get(input.type, pluginVersion);
       channelRegistry.validate(input.type, plugin.descriptor.version, credentials, targetConfig);
     } catch (error) {
-      throw new BadRequestException((error as Error).message);
+      throw new ServiceError('CHANNEL_CONFIG_INVALID', (error as Error).message);
     }
-    const result = await this.db.$transaction(async (tx) => {
-      const data = {
-        name: input.name,
-        type: input.type,
-        pluginVersion: plugin.descriptor.version,
-        configVersion: plugin.descriptor.configVersion,
-        enabled: input.enabled,
-        credentials: this.secrets.encrypt(credentials),
-      };
-      const channel = id
-        ? await tx.channel.update({ where: { id }, data })
-        : await tx.channel.create({ data });
-      const target = await tx.target.findFirst({ where: { channelId: channel.id } });
-      const targetData = {
-        name: input.targetName,
-        config: targetConfig as Prisma.InputJsonValue,
-      };
-      if (target) await tx.target.update({ where: { id: target.id }, data: targetData });
-      else await tx.target.create({ data: { ...targetData, channelId: channel.id } });
-      await tx.audit.create({
-        data: {
-          actor,
-          action: 'channel.save',
-          resource: channel.id,
-          details: {
-            type: input.type,
-            pluginVersion: plugin.descriptor.version,
-            enabled: input.enabled,
+    const save = () =>
+      this.db.$transaction(async (tx) => {
+        const data = {
+          name: input.name,
+          type: input.type,
+          pluginVersion: plugin.descriptor.version,
+          configVersion: plugin.descriptor.configVersion,
+          enabled: input.enabled,
+          credentials: this.secrets.encrypt(credentials),
+        };
+        const channel = id
+          ? await tx.channel.update({ where: { id }, data })
+          : await tx.channel.create({ data });
+        const target = await tx.target.findFirst({ where: { channelId: channel.id } });
+        const targetData = {
+          name: input.name,
+          config: targetConfig as Prisma.InputJsonValue,
+        };
+        if (target) await tx.target.update({ where: { id: target.id }, data: targetData });
+        else await tx.target.create({ data: { ...targetData, channelId: channel.id } });
+        await tx.audit.create({
+          data: {
+            actor,
+            action: 'channel.save',
+            resource: channel.id,
+            details: {
+              type: input.type,
+              pluginVersion: plugin.descriptor.version,
+              enabled: input.enabled,
+            },
           },
-        },
+        });
+        return { id: channel.id, shortId: channel.shortId };
       });
-      return { id: channel.id };
-    });
-    return result;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await save();
+      } catch (error) {
+        const conflict = error as { code?: string; meta?: { target?: string[] } };
+        // Retry the whole transaction, so a collision cannot leave a target or audit record.
+        if (
+          id ||
+          attempt >= 4 ||
+          conflict.code !== 'P2002' ||
+          !conflict.meta?.target?.includes('shortId')
+        )
+          throw error;
+      }
+    }
   }
   async targets() {
     return this.db.target.findMany({
-      include: { channel: { select: { name: true, type: true, enabled: true } } },
+      include: { channel: { select: { name: true, shortId: true, type: true, enabled: true } } },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -184,7 +200,7 @@ export class ConfigurationService {
     id?: string,
   ) {
     if (!(await this.repository.targetsExist(input.targetIds)))
-      throw new BadRequestException('目标不存在');
+      throw new ServiceError('TARGET_UNAVAILABLE', '目标不存在');
     const topic = id
       ? await this.db.topic.update({ where: { id }, data: input })
       : await this.db.topic.create({ data: input });

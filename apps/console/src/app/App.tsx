@@ -67,6 +67,9 @@ const PluginDocsPage = lazy(() =>
   import('../features/developer/PluginDocsPage').then((m) => ({ default: m.PluginDocsPage })),
 );
 const ApiReferencePage = lazy(() => import('../features/developer/ApiReferencePage'));
+const ResponseDocsPage = lazy(() =>
+  import('../features/developer/ResponseDocsPage').then((m) => ({ default: m.ResponseDocsPage })),
+);
 import { getSystem } from '../features/system/api';
 
 const queryClient = new QueryClient({
@@ -302,6 +305,7 @@ export function App() {
                   <Route path="docs/plugins" element={<PluginDocsPage />} />
                   <Route path="docs/swagger" element={<ApiReferencePage viewer="swagger" />} />
                   <Route path="docs/redoc" element={<ApiReferencePage viewer="redoc" />} />
+                  <Route path="docs/responses" element={<ResponseDocsPage />} />
                   <Route path="*" element={<PublicNotFound />} />
                 </Route>
                 <Route path="console/*" element={<Gate />} />
