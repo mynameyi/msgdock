@@ -21,6 +21,7 @@ import { Channel } from '../../shared/api';
 import { PageTitle, QueryState } from '../../shared/ui';
 import { TestSend } from '../deliveries/TestSend';
 import { PluginFields } from './PluginFields';
+import { Link } from 'react-router-dom';
 
 export function ChannelsPage() {
   const query = useQuery({ queryKey: ['channels'], queryFn: getChannels });
@@ -120,6 +121,7 @@ export function ChannelsPage() {
           }
           className="mb16"
           size="small"
+          extra={<Link to="/docs/plugins">插件开发指南 →</Link>}
         >
           <Space wrap>
             {plugins.data?.map((p) => (

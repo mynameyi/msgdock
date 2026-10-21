@@ -28,6 +28,8 @@ docker exec msgdock cat /data/secrets/setup-token
 - [控制台首页原型](docs/prototypes/home.md)：投递概览、渠道状态、最近投递和 API 接入示例。
 - [渠道插件约定](docs/channel-plugins.md)：SDK、注册、Schema 表单、执行边界、版本固定与插件发布。
 
+控制台侧栏的“开发文档”提供 API 接入（`/docs`）和插件开发（`/docs/plugins`）两页。插件开发页直接由仓库中的约定文档构建，支持目录跳转、代码复制与 Markdown 下载。
+
 ## 项目目标
 
 - **统一接入**：业务系统通过统一 HTTP API 提交通知。

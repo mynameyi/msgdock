@@ -61,6 +61,9 @@ const SystemPage = lazy(() =>
 const DocsPage = lazy(() =>
   import('../features/system/DocsPage').then((m) => ({ default: m.DocsPage })),
 );
+const PluginDocsPage = lazy(() =>
+  import('../features/system/PluginDocsPage').then((m) => ({ default: m.PluginDocsPage })),
+);
 import { getSystem } from '../features/system/api';
 
 const queryClient = new QueryClient({
@@ -76,7 +79,7 @@ const navigation = [
 ];
 const lowerNavigation = [
   { key: '/settings', label: '系统设置', icon: <SettingOutlined /> },
-  { key: '/docs', label: 'API 文档', icon: <BookOutlined /> },
+  { key: '/docs', label: '开发文档', icon: <BookOutlined /> },
 ];
 function Shell({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const location = useLocation(),
@@ -84,7 +87,12 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
   const [collapsed, setCollapsed] = useState(false);
   const system = useQuery({ queryKey: ['system'], queryFn: getSystem, refetchInterval: 15000 });
   const title =
-    [...navigation, ...lowerNavigation].find((n) => n.key === location.pathname)?.label ?? '概览';
+    location.pathname === '/docs/plugins'
+      ? '插件开发'
+      : location.pathname === '/docs'
+        ? 'API 接入'
+        : ([...navigation, ...lowerNavigation].find((n) => n.key === location.pathname)?.label ??
+          '概览');
   return (
     <Layout className="app-layout">
       <Layout.Sider
@@ -115,7 +123,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
         <div className="sidebar-bottom">
           <Menu
             mode="inline"
-            selectedKeys={[location.pathname]}
+            selectedKeys={[location.pathname.startsWith('/docs') ? '/docs' : location.pathname]}
             items={lowerNavigation}
             onClick={(v) => navigate(v.key)}
           />
@@ -177,6 +185,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
               <Route path="/applications" element={<ApplicationsPage />} />
               <Route path="/settings" element={<SystemPage />} />
               <Route path="/docs" element={<DocsPage />} />
+              <Route path="/docs/plugins" element={<PluginDocsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

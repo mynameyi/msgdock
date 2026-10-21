@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getApplications } from '../applications/api';
 import { getTargets } from '../channels/api';
 import { PageTitle } from '../../shared/ui';
+import { DocsNavigation } from './DocsNavigation';
 export function DocsPage() {
   const apps = useQuery({ queryKey: ['applications'], queryFn: getApplications });
   const targets = useQuery({ queryKey: ['targets'], queryFn: getTargets });
@@ -28,6 +29,7 @@ export function DocsPage() {
           </Button>
         }
       />
+      <DocsNavigation />
       <Card title="接入步骤">
         <Steps
           size="small"

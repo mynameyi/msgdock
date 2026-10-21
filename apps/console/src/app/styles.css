@@ -373,6 +373,155 @@ select {
   overflow: auto;
   margin: 0 0 13px;
 }
+.docs-navigation {
+  margin-top: -8px;
+  margin-bottom: 8px;
+}
+.plugin-guide-layout {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.plugin-guide-toc {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.plugin-guide-toc nav {
+  display: grid;
+  gap: 4px;
+}
+.plugin-guide-toc a {
+  display: block;
+  padding: 7px 9px;
+  border-radius: 5px;
+  color: #586b86;
+  line-height: 1.5;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.plugin-guide-toc a:hover,
+.plugin-guide-toc a:focus-visible {
+  background: #edf3ff;
+  color: #3569ef;
+}
+.plugin-guide-content {
+  min-width: 0;
+}
+.plugin-guide-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e9edf3;
+  font-size: 18px;
+  font-weight: 600;
+}
+.plugin-guide-article {
+  line-height: 1.9;
+  color: #344764;
+  overflow-wrap: anywhere;
+}
+.plugin-guide-article h2 {
+  color: #18243a;
+  font-size: 18px;
+  margin: 30px 0 12px;
+  scroll-margin-top: 24px;
+}
+.plugin-guide-article p {
+  margin: 12px 0;
+}
+.plugin-guide-article li {
+  margin: 7px 0;
+}
+.plugin-guide-article ul,
+.plugin-guide-article ol {
+  padding-left: 24px;
+}
+.plugin-guide-article :not(pre) > code {
+  border: 1px solid #e9edf3;
+  background: #f6f8fc;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+.plugin-guide-table {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+.plugin-guide-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.plugin-guide-table th,
+.plugin-guide-table td {
+  padding: 10px 12px;
+  border: 1px solid #e9edf3;
+  text-align: left;
+  vertical-align: top;
+  min-width: 130px;
+}
+.plugin-guide-table th {
+  background: #f6f8fc;
+  color: #18243a;
+  font-weight: 500;
+}
+.plugin-guide-code {
+  border: 1px solid #e3e9f2;
+  border-radius: 7px;
+  overflow: hidden;
+  margin: 16px 0;
+  background: #f6f8fc;
+}
+.plugin-guide-codebar {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 13px;
+  border-bottom: 1px solid #e3e9f2;
+  color: #708096;
+  font-size: 11px;
+}
+.plugin-guide-codebar .ant-typography {
+  font-size: 11px;
+}
+.plugin-guide-code pre {
+  overflow-x: auto;
+  padding: 14px;
+  margin: 0;
+  font:
+    12px/1.85 Consolas,
+    monospace;
+  white-space: pre;
+}
+@media (max-width: 1100px) {
+  .plugin-guide-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .plugin-guide-toc {
+    position: static;
+    max-height: none;
+  }
+  .plugin-guide-toc nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+}
+@media (max-width: 720px) {
+  .plugin-guide-content > .ant-card-body {
+    padding: 18px;
+  }
+  .plugin-guide-heading {
+    font-size: 16px;
+  }
+}
 .home-footer,
 .app-footer {
   display: flex;

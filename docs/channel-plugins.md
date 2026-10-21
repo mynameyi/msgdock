@@ -1,5 +1,17 @@
 # 渠道插件开发与运行约定
 
+## 阅读入口
+
+控制台侧栏选择“开发文档 → 插件开发”，或登录后打开 `/docs/plugins`。页面提供章节目录、表格、代码复制和本文下载；API 接入说明仍位于 `/docs`。渠道管理的“已加载插件”区域也提供开发指南入口。
+
+页面在构建时直接读取本文件。修改约定后重新构建控制台即可同步页面与下载内容，无需另写一份前端文档。
+
+## Workspace 包是什么
+
+Workspace 包是同一个仓库中由 pnpm 统一管理的本地代码包，每个包有自己的 `package.json`、名称、依赖和构建脚本。仓库根目录的 `pnpm-workspace.yaml` 将 `apps/*`、`packages/*` 和 `plugins/*` 纳入工作区。
+
+例如 `plugins/wecom-webhook` 是企业微信插件包，包名为 `@msgdock/plugin-wecom-webhook`；`packages/plugin-sdk` 是 SDK 包。插件中的 `"@msgdock/plugin-sdk": "workspace:*"` 表示依赖仓库里的 SDK，由 pnpm 建立本地链接，不需要先发布到 npm。当前插件作为独立包维护，构建时统一进入应用镜像。
+
 ## 当前范围
 
 MsgDock 0.2.0 采用核心引擎、渠道插件和稳定 SDK 的组织方式。前端继续按 Feature-based 组织，后端继续使用 NestJS 业务模块；插件架构负责平台扩展边界。
