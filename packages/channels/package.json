@@ -1,0 +1,19 @@
+{
+  "name": "@msgdock/channels",
+  "version": "0.2.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@msgdock/plugin-sdk": "workspace:*",
+    "@msgdock/plugin-wecom-webhook": "workspace:*",
+    "@msgdock/plugin-feishu-webhook": "workspace:*",
+    "@msgdock/plugin-dingtalk-bot": "workspace:*",
+    "@msgdock/plugin-mock": "workspace:*",
+    "ajv": "^8.17.1"
+  }
+}

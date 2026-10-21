@@ -1,0 +1,17 @@
+{
+  "name": "@msgdock/database",
+  "version": "0.2.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc",
+    "typecheck": "tsc --noEmit",
+    "migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@prisma/client": "~6.19.0",
+    "prisma": "~6.19.0"
+  }
+}
