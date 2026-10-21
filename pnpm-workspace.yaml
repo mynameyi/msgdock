@@ -10,3 +10,9 @@ allowBuilds:
   esbuild: true
   '@scarf/scarf': false
   msgpackr-extract: false
+  # Browser documentation uses bundled parsers; native parser builds and funding scripts are unnecessary.
+  '@tree-sitter-grammars/tree-sitter-yaml': false
+  core-js-pure: false
+  core-js: false
+  tree-sitter: false
+  tree-sitter-json: false

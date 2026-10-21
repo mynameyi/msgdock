@@ -16,7 +16,7 @@ docker run -d --name msgdock --restart unless-stopped --stop-timeout 90 -p 127.0
 docker exec msgdock cat /data/secrets/setup-token
 ```
 
-打开 <http://localhost:3300>，使用初始化令牌创建管理员。也可以执行 `docker compose up --build -d`，同样只会启动一个容器。内置 PostgreSQL、Redis、API、Worker 和控制台；所有业务数据与加密密钥保存在 `/data` 持久化卷中。
+打开 <http://localhost:3300> 查看公开产品首页；进入 <http://localhost:3300/console>，使用初始化令牌创建管理员。也可以执行 `docker compose up --build -d`，同样只会启动一个容器。内置 PostgreSQL、Redis、API、Worker 和控制台；所有业务数据与加密密钥保存在 `/data` 持久化卷中。
 
 进入控制台后按“添加渠道 → 创建应用并授权目标 → 生成 API Key → 发送测试”的顺序接入。API Key 通过 `Authorization: Bearer <API_KEY>` 传递。新应用默认鉴权；显式选择非鉴权后只开放该应用的发送入口。
 
@@ -28,7 +28,19 @@ docker exec msgdock cat /data/secrets/setup-token
 - [控制台首页原型](docs/prototypes/home.md)：投递概览、渠道状态、最近投递和 API 接入示例。
 - [渠道插件约定](docs/channel-plugins.md)：SDK、注册、Schema 表单、执行边界、版本固定与插件发布。
 
-控制台侧栏的“开发文档”提供 API 接入（`/docs`）和插件开发（`/docs/plugins`）两页。插件开发页直接由仓库中的约定文档构建，支持目录跳转、代码复制与 Markdown 下载。
+产品首页与开发文档公开访问，无需管理员登录。控制台侧栏的“开发文档”在新页面打开公开文档。插件开发页直接由仓库中的约定文档构建，支持目录跳转、代码复制与 Markdown 下载。
+
+| 地址 | 用途 | 登录要求 |
+| --- | --- | --- |
+| `/` | 产品介绍、渠道能力与接入入口 | 公开 |
+| `/docs` | API 快速接入 | 公开 |
+| `/docs/swagger` | Swagger UI 在线调试 | 页面公开；调用接口按应用规则鉴权 |
+| `/docs/redoc` | ReDoc 接口参考 | 公开 |
+| `/docs/plugins` | 渠道插件开发约定 | 公开 |
+| `/openapi.json` | 通知发送与查询的 OpenAPI | 公开，不含后台接口及其专用模型 |
+| `/console`、`/console/*` | 管理控制台 | 初始化或管理员登录 |
+
+Swagger UI 与 ReDoc 共用服务端生成的公开契约，依赖资源随镜像提供，无需 CDN。Swagger 的 API Key 仅保存在当前视图内存中；点击 Execute 会向当前实例发起真实请求。仓库中的 `docs/openapi.json` 保留完整工程契约，用于生成控制台 API 客户端。旧的 `/channels`、`/deliveries` 等后台地址会跳转到 `/console` 下对应页面，并保留筛选参数。
 
 ## 项目目标
 

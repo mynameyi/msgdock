@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseService, DeliveriesService, RedisService } from '@msgdock/server';
 import { AppModule } from './app.module';
+import { publicOpenApi } from './public-openapi';
 
 @Catch()
 class SafeErrors implements ExceptionFilter {
@@ -75,7 +76,8 @@ async function main() {
     if (req.url.startsWith('/api')) reply.header('Cache-Control', 'no-store');
     reply.header(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      // ReDoc's local search uses a bundled Blob worker. Script and network sources remain local.
+      "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     );
   });
   const document = SwaggerModule.createDocument(
@@ -108,7 +110,8 @@ async function main() {
     await app.close();
     return;
   }
-  server.get('/openapi.json', async () => document);
+  const publicDocument = publicOpenApi(document);
+  server.get('/openapi.json', async () => publicDocument);
   server.get('/health/live', async () => ({ ok: true }));
   server.get('/health/ready', async (_req: FastifyRequest, reply: FastifyReply) => {
     try {

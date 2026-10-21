@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.4 |
+| 文档版本 | v0.5 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 架构基线与演进目标；0.2.0 加入可信内置渠道插件 |
 | 仓库 | [mynameyi/msgdock](https://github.com/mynameyi/msgdock) |
@@ -72,7 +72,7 @@
 | 前端本地状态 | useState、useReducer；少量 Context | 交互状态、复杂局部状态与会话上下文 |
 | 后端 | NestJS、FastifyAdapter | HTTP API、模块组织、注入与启动装配 |
 | 请求校验 | class-validator、class-transformer | DTO 的运行时校验与受控转换 |
-| 接口描述 | @nestjs/swagger、OpenAPI | 生成接口契约与文档 |
+| 接口描述 | @nestjs/swagger、OpenAPI、Swagger UI、ReDoc | 从 DTO 生成契约；公开调试与接口参考共用通知 API 契约 |
 | 前端 API 客户端 | openapi-typescript、openapi-fetch | 根据公开 OpenAPI 生成类型并调用接口 |
 | 数据库 | PostgreSQL 18 | 配置、模板、通知、投递、Outbox、审计 |
 | 数据访问 | Prisma、Prisma Migrate | 查询、事务与版本化迁移；特殊领取查询使用受控参数化 SQL |
@@ -125,7 +125,13 @@ flowchart TD
 | 渠道适配器 | 平台鉴权、格式校验、渲染、发送、平台结果归一化 |
 | 进程管理 | 启动依赖、监督退出、转发信号与回收子进程；不承担业务调度 |
 
-前后端代码分离，部署时使用同一个域名。根路径提供控制台，`/api/v1/` 提供业务 API，`/api/admin/` 提供管理接口，`/webhooks/im/` 提供平台 HTTP 回调。前端路由回退规则只处理页面路径，API 与回调错误保留其原始 HTTP 状态。
+前后端代码分离，部署时使用同一个域名。根路径 `/` 提供公开产品介绍，`/docs` 及其子页面提供公开开发文档，`/console` 及其子页面提供需要初始化或登录的管理控制台。`/api/v1/` 提供业务 API，`/api/admin/` 提供管理接口；`/webhooks/im/` 为后续平台 HTTP 回调预留。前端路由回退规则只处理页面路径，API 与回调错误保留其原始 HTTP 状态。
+
+公开页面使用独立布局，不挂载后台登录守卫，不请求会话、初始化状态、应用列表、目标列表或系统状态。后台仍使用管理员会话和 CSRF 校验。旧后台页面路径兼容跳转至 `/console` 对应地址，保留查询参数和锚点。
+
+`/docs` 提供快速接入，`/docs/plugins` 从仓库约定 Markdown 构建插件指南，`/docs/swagger` 提供 Swagger UI，`/docs/redoc` 提供 ReDoc。两种接口视图按路由懒加载，JS、CSS 与文档一起打入单镜像，无 CDN 或额外文档服务。公开 `/openapi.json` 通过明确的通知 API 路径白名单从完整契约投影，并只保留被引用的 Schema 及 Bearer 鉴权。后台与初始化接口不进入公开视图；仓库完整契约继续用于内部客户端生成。
+
+Swagger UI 的在线调用仅允许当前实例的通知 API，省略管理会话 Cookie，授权值不写入浏览器持久存储。调试默认不执行请求；用户点击 Execute 后按实际应用鉴权、权限、限流和幂等规则处理。
 
 控制台首版采用按需刷新与有界轮询。后续出现实时状态需求时增加 SSE。机器人 WebSocket 与长轮询由 Worker 管理，与浏览器页面生命周期分开。
 
@@ -178,6 +184,8 @@ apps/console/src/
 │   ├── providers.tsx           # QueryClient、主题、会话等 Provider
 │   └── layouts/                # 应用布局
 ├── features/
+│   ├── public/                 # 公开产品首页、公共导航与布局
+│   ├── developer/              # 公开 API、插件指南、Swagger UI 与 ReDoc
 │   ├── channels/
 │   │   ├── pages/              # 渠道列表、详情、编辑
 │   │   ├── components/         # 渠道配置表单、连接状态等

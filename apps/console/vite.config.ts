@@ -1,7 +1,23 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'local-redoc-attribution',
+      transform(code, id) {
+        if (!id.replaceAll('\\', '/').includes('/redoc/bundles/')) return;
+        // Keep Redocly's text credit without its optional CDN image, so docs work offline.
+        return {
+          code: code.replaceAll(
+            'https://cdn.redoc.ly/redoc/logo-mini.svg',
+            'data:image/svg+xml,%3Csvg%20xmlns%3D%22http://www.w3.org/2000/svg%22/%3E',
+          ),
+          map: null,
+        };
+      },
+    },
+  ],
   build: {
     rollupOptions: {
       output: {

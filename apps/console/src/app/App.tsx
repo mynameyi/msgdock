@@ -35,6 +35,8 @@ import {
 import { getBootstrap, getSession, logout, Session } from '../features/identity/api';
 import { IdentityPage } from '../features/identity/IdentityPage';
 import { setCsrfToken } from '../shared/api';
+import { PublicLayout } from '../features/public/PublicLayout';
+import { LandingPage } from '../features/public/LandingPage';
 const OverviewPage = lazy(() =>
   import('../features/overview/OverviewPage').then((m) => ({ default: m.OverviewPage })),
 );
@@ -59,27 +61,36 @@ const SystemPage = lazy(() =>
   import('../features/system/SystemPage').then((m) => ({ default: m.SystemPage })),
 );
 const DocsPage = lazy(() =>
-  import('../features/system/DocsPage').then((m) => ({ default: m.DocsPage })),
+  import('../features/developer/DocsPage').then((m) => ({ default: m.DocsPage })),
 );
 const PluginDocsPage = lazy(() =>
-  import('../features/system/PluginDocsPage').then((m) => ({ default: m.PluginDocsPage })),
+  import('../features/developer/PluginDocsPage').then((m) => ({ default: m.PluginDocsPage })),
 );
+const ApiReferencePage = lazy(() => import('../features/developer/ApiReferencePage'));
 import { getSystem } from '../features/system/api';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true, staleTime: 10000 } },
 });
 const navigation = [
-  { key: '/', label: '概览', icon: <DashboardOutlined /> },
-  { key: '/deliveries', label: '消息投递', icon: <SendOutlined /> },
-  { key: '/channels', label: '渠道管理', icon: <ApiOutlined /> },
-  { key: '/templates', label: '消息模板', icon: <FileTextOutlined /> },
-  { key: '/routing', label: '主题路由', icon: <BranchesOutlined /> },
-  { key: '/applications', label: '接入应用', icon: <AppstoreOutlined /> },
+  { key: '/console', label: '概览', icon: <DashboardOutlined /> },
+  { key: '/console/deliveries', label: '消息投递', icon: <SendOutlined /> },
+  { key: '/console/channels', label: '渠道管理', icon: <ApiOutlined /> },
+  { key: '/console/templates', label: '消息模板', icon: <FileTextOutlined /> },
+  { key: '/console/routing', label: '主题路由', icon: <BranchesOutlined /> },
+  { key: '/console/applications', label: '接入应用', icon: <AppstoreOutlined /> },
 ];
 const lowerNavigation = [
-  { key: '/settings', label: '系统设置', icon: <SettingOutlined /> },
-  { key: '/docs', label: '开发文档', icon: <BookOutlined /> },
+  { key: '/console/settings', label: '系统设置', icon: <SettingOutlined /> },
+  {
+    key: '/docs',
+    label: (
+      <Link to="/docs" target="_blank" rel="noreferrer">
+        开发文档 ↗
+      </Link>
+    ),
+    icon: <BookOutlined />,
+  },
 ];
 function Shell({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const location = useLocation(),
@@ -87,12 +98,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
   const [collapsed, setCollapsed] = useState(false);
   const system = useQuery({ queryKey: ['system'], queryFn: getSystem, refetchInterval: 15000 });
   const title =
-    location.pathname === '/docs/plugins'
-      ? '插件开发'
-      : location.pathname === '/docs'
-        ? 'API 接入'
-        : ([...navigation, ...lowerNavigation].find((n) => n.key === location.pathname)?.label ??
-          '概览');
+    [...navigation, ...lowerNavigation].find((n) => n.key === location.pathname)?.label ?? '概览';
   return (
     <Layout className="app-layout">
       <Layout.Sider
@@ -104,7 +110,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
         theme="light"
         className="sidebar"
       >
-        <Link to="/" className="brand">
+        <Link to="/console" className="brand">
           <span className="brand-mark">M</span>
           {!collapsed && (
             <span className="brand-copy">
@@ -125,7 +131,9 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
             mode="inline"
             selectedKeys={[location.pathname.startsWith('/docs') ? '/docs' : location.pathname]}
             items={lowerNavigation}
-            onClick={(v) => navigate(v.key)}
+            onClick={(v) => {
+              if (v.key !== '/docs') navigate(v.key);
+            }}
           />
           {!collapsed && (
             <div className="instance-state">
@@ -177,16 +185,14 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
             }
           >
             <Routes>
-              <Route path="/" element={<OverviewPage />} />
-              <Route path="/deliveries" element={<DeliveriesPage />} />
-              <Route path="/channels" element={<ChannelsPage />} />
-              <Route path="/templates" element={<TemplatesPage />} />
-              <Route path="/routing" element={<RoutingPage />} />
-              <Route path="/applications" element={<ApplicationsPage />} />
-              <Route path="/settings" element={<SystemPage />} />
-              <Route path="/docs" element={<DocsPage />} />
-              <Route path="/docs/plugins" element={<PluginDocsPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route index element={<OverviewPage />} />
+              <Route path="deliveries" element={<DeliveriesPage />} />
+              <Route path="channels" element={<ChannelsPage />} />
+              <Route path="templates" element={<TemplatesPage />} />
+              <Route path="routing" element={<RoutingPage />} />
+              <Route path="applications" element={<ApplicationsPage />} />
+              <Route path="settings" element={<SystemPage />} />
+              <Route path="*" element={<Navigate to="/console" replace />} />
             </Routes>
           </Suspense>
           <footer className="app-footer">
@@ -282,10 +288,47 @@ export function App() {
       <AntApp>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
-            <Gate />
+            <Suspense
+              fallback={
+                <div className="state-center">
+                  <Spin />
+                </div>
+              }
+            >
+              <Routes>
+                <Route element={<PublicLayout />}>
+                  <Route index element={<LandingPage />} />
+                  <Route path="docs" element={<DocsPage />} />
+                  <Route path="docs/plugins" element={<PluginDocsPage />} />
+                  <Route path="docs/swagger" element={<ApiReferencePage viewer="swagger" />} />
+                  <Route path="docs/redoc" element={<ApiReferencePage viewer="redoc" />} />
+                  <Route path="*" element={<PublicNotFound />} />
+                </Route>
+                <Route path="console/*" element={<Gate />} />
+                {['deliveries', 'channels', 'templates', 'routing', 'applications', 'settings'].map(
+                  (path) => (
+                    <Route key={path} path={path} element={<LegacyConsoleRedirect />} />
+                  ),
+                )}
+              </Routes>
+            </Suspense>
           </BrowserRouter>
         </QueryClientProvider>
       </AntApp>
     </ConfigProvider>
+  );
+}
+
+function LegacyConsoleRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/console${location.pathname}${location.search}${location.hash}`} replace />;
+}
+function PublicNotFound() {
+  return (
+    <div className="public-not-found">
+      <h1>页面未找到</h1>
+      <p>这个地址还没有内容。</p>
+      <Link to="/">返回 MsgDock 首页 →</Link>
+    </div>
   );
 }

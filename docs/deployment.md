@@ -10,7 +10,11 @@ docker run -d --name msgdock --restart unless-stopped --stop-timeout 90 -p 127.0
 docker exec msgdock cat /data/secrets/setup-token
 ```
 
-打开 <http://localhost:3300>，输入初始化令牌并创建管理员，密码至少 12 位。没有通用默认密码。首次管理员创建后，初始化接口关闭；登录后可在系统设置修改密码。
+打开 <http://localhost:3300> 是公开产品首页。进入 <http://localhost:3300/console>，输入初始化令牌并创建管理员，密码至少 12 位。没有通用默认密码。首次管理员创建后，初始化接口关闭；登录后可在系统设置修改密码。
+
+公开开发文档位于 `/docs`，其中 `/docs/swagger` 提供 Swagger UI 调试，`/docs/redoc` 提供 ReDoc 阅读视图，`/docs/plugins` 提供插件开发指南。这些页面无需登录，不读取实例的应用、目标、密钥或运行状态。`/openapi.json` 只提供通知 API 的公开契约。页面、渲染器和样式均随镜像提供，无需额外文档容器或 CDN。
+
+反向代理需同时转发 `/`、`/docs/*`、`/console/*`、`/assets/*`、`/openapi.json` 与 `/api/*` 到本容器，保留原始路径。旧后台地址如 `/channels` 会由前端兼容跳转至 `/console/channels`。公开页面不改变管理接口的认证与 CSRF 规则，API Key 权限也保持原有应用范围。
 
 仓库中的 `compose.yaml` 是同一部署方式的单服务示例：
 

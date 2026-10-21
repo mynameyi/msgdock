@@ -141,7 +141,7 @@ export function OverviewPage() {
             title={`${data.unknownCount} 条投递结果待确认`}
             description="平台响应不明，请先核实后再决定是否重发。"
             action={
-              <Button type="link" onClick={() => navigate('/deliveries?status=unknown')}>
+              <Button type="link" onClick={() => navigate('/console/deliveries?status=unknown')}>
                 查看待确认 <ArrowRightOutlined />
               </Button>
             }
@@ -153,7 +153,7 @@ export function OverviewPage() {
             showIcon
             title="欢迎使用信港"
             description="添加渠道 → 创建接入应用并授权目标 → 生成 API Key → 发送第一条通知。"
-            action={<Button onClick={() => navigate('/channels')}>添加渠道</Button>}
+            action={<Button onClick={() => navigate('/console/channels')}>添加渠道</Button>}
           />
         )}
         <div className="dashboard-grid">
@@ -202,7 +202,7 @@ export function OverviewPage() {
               )}
             </div>
           </Card>
-          <Card title="渠道状态" extra={<Link to="/channels">管理 ↗</Link>}>
+          <Card title="渠道状态" extra={<Link to="/console/channels">管理 ↗</Link>}>
             <div className="channel-list">
               {data?.channels.length ? (
                 data.channels.slice(0, 4).map((c) => (
@@ -242,7 +242,7 @@ export function OverviewPage() {
             </div>
             <div className="panel-footer">
               <span>{data?.channels.filter((c) => c.enabled).length ?? 0} 个渠道已启用</span>
-              <Link to="/channels">
+              <Link to="/console/channels">
                 <PlusOutlined /> 添加渠道
               </Link>
             </div>
@@ -252,7 +252,7 @@ export function OverviewPage() {
           <Card
             title="最近投递"
             extra={
-              <Link to="/deliveries">
+              <Link to="/console/deliveries">
                 查看全部 <ArrowRightOutlined />
               </Link>
             }
@@ -298,7 +298,7 @@ export function OverviewPage() {
                 : '新建应用默认使用 API Key 鉴权；密钥由业务服务端持有。'}
             </p>
             <div className="panel-footer">
-              <Link to="/applications">管理接入应用 ↗</Link>
+              <Link to="/console/applications">管理接入应用 ↗</Link>
               <Link to="/docs">
                 接口文档 <ArrowRightOutlined />
               </Link>

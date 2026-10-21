@@ -12,6 +12,8 @@ export function DocsNavigation() {
       onChange={navigate}
       items={[
         { key: '/docs', label: 'API 接入', icon: <ApiOutlined /> },
+        { key: '/docs/swagger', label: 'Swagger UI' },
+        { key: '/docs/redoc', label: 'ReDoc' },
         { key: '/docs/plugins', label: '插件开发', icon: <CodeOutlined /> },
       ]}
     />

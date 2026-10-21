@@ -460,6 +460,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * 查询通知及投递概况
+         * @description 始终需要该应用的 API Key，包括发送采用非鉴权模式的应用。
+         */
         get: operations["NotificationsController_get"];
         put?: never;
         post?: never;
@@ -476,6 +480,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * 分页查询通知的投递结果
+         * @description 每页最多 50 条。使用返回的 nextCursor 继续查询；null 表示末页。
+         */
         get: operations["NotificationsController_deliveries"];
         put?: never;
         post?: never;
@@ -492,6 +500,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** 查询单个目标的投递结果 */
         get: operations["NotificationsController_delivery"];
         put?: never;
         post?: never;
@@ -579,28 +588,127 @@ export interface components {
             targetIds: string[];
             text: string;
         };
+        ApiErrorDto: {
+            /** @example HTTP_401 */
+            code: string;
+            message: string | string[];
+            request_id: string;
+        };
         TargetDto: {
-            /** @enum {string} */
+            /**
+             * @description targets 使用 ids；topic 使用 key。所有目标需在应用授权范围内。
+             * @example targets
+             * @enum {string}
+             */
             type: "targets" | "topic";
+            /**
+             * @description type=targets 时填写实际目标 UUID，最多 500 个
+             * @example [
+             *       "00000000-0000-4000-8000-000000000001"
+             *     ]
+             */
             ids?: string[];
+            /**
+             * @description type=topic 时填写主题 Key
+             * @example finance
+             */
             key?: string;
         };
         TextDto: {
+            /**
+             * @description 非空文本，最终 UTF-8 内容最多 2000 字节，且不能超过渠道插件上限
+             * @example 订单支付成功。
+             */
             text: string;
         };
         TemplateRefDto: {
             key: string;
         };
         NotificationDto: {
+            /** @example order.paid */
             event: string;
             target: components["schemas"]["TargetDto"];
+            /** @description 直接文本消息；message 与 template 必须且只能提供一个 */
             message?: components["schemas"]["TextDto"];
+            /** @description 引用控制台创建的模板；提供 template 时省略 message */
             template?: components["schemas"]["TemplateRefDto"];
             variables?: {
                 [key: string]: unknown;
             };
-            /** @default 3600 */
+            /**
+             * @description 有效期，单位秒
+             * @default 3600
+             */
             expires_in: number;
+        };
+        AcceptedNotificationDto: {
+            /** Format: uuid */
+            notification_id: string;
+            /** @enum {string} */
+            status: "accepted_for_processing";
+            delivery_count: number;
+            idempotency_hit: boolean;
+            request_id: string;
+        };
+        DeliverySummaryDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description accepted 表示平台接受；unknown 表示结果不明，重发前请人工核实
+             * @enum {string}
+             */
+            status: "pending" | "sending" | "retry_wait" | "accepted" | "failed" | "unknown" | "expired" | "cancelled";
+            targetName: string;
+            attemptCount: number;
+            lastCode?: string | null;
+            lastMessage?: string | null;
+        };
+        NotificationResultDto: {
+            /** Format: uuid */
+            id: string;
+            event: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            deliveries: components["schemas"]["DeliverySummaryDto"][];
+        };
+        DeliveryListItemDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description accepted 表示平台接受；unknown 表示结果不明，重发前请人工核实
+             * @enum {string}
+             */
+            status: "pending" | "sending" | "retry_wait" | "accepted" | "failed" | "unknown" | "expired" | "cancelled";
+            targetName: string;
+            attemptCount: number;
+            lastCode?: string | null;
+            lastMessage?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        DeliveryPageDto: {
+            items: components["schemas"]["DeliveryListItemDto"][];
+            /** @description 下一页 cursor；null 表示没有后续页 */
+            nextCursor: string | null;
+        };
+        DeliveryResultDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description accepted 表示平台接受；unknown 表示结果不明，重发前请人工核实
+             * @enum {string}
+             */
+            status: "pending" | "sending" | "retry_wait" | "accepted" | "failed" | "unknown" | "expired" | "cancelled";
+            targetName: string;
+            attemptCount: number;
+            lastCode?: string | null;
+            lastMessage?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            notificationId: string;
         };
     };
     responses: never;
@@ -1223,11 +1331,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                "idempotency-key": string;
                 /** @description 应用内唯一，1–200 个可见 ASCII 字符 */
-                "Idempotency-Key": string;
+                "idempotency-key": string;
             };
             path: {
+                /** @description 控制台中配置的接入应用 Key */
                 appKey: string;
             };
             cookie?: never;
@@ -1243,7 +1351,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AcceptedNotificationDto"];
+                };
+            };
+            /** @description 参数、目标、消息或幂等键无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 需要有效的应用 API Key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description API Key 不属于该应用或无权访问目标 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 相同幂等键对应不同请求 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 应用发送频率超限 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 服务暂时不可用或投递积压达到受理上限 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1254,6 +1418,7 @@ export interface operations {
                 authorization: string;
             };
             path: {
+                /** @description 控制台中配置的接入应用 Key */
                 appKey: string;
                 id: string;
             };
@@ -1265,19 +1430,68 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["NotificationResultDto"];
+                };
+            };
+            /** @description 参数、目标、消息或幂等键无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 需要有效的应用 API Key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description API Key 不属于该应用或无权访问目标 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 通知不存在或不属于该应用 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 服务暂时不可用或投递积压达到受理上限 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
     NotificationsController_deliveries: {
         parameters: {
             query?: {
+                /** @description 上一页返回的 nextCursor */
                 cursor?: string;
             };
             header: {
                 authorization: string;
             };
             path: {
+                /** @description 控制台中配置的接入应用 Key */
                 appKey: string;
                 id: string;
             };
@@ -1289,7 +1503,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DeliveryPageDto"];
+                };
+            };
+            /** @description 参数、目标、消息或幂等键无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 需要有效的应用 API Key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description API Key 不属于该应用或无权访问目标 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 通知不存在或不属于该应用 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 服务暂时不可用或投递积压达到受理上限 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };
@@ -1300,6 +1561,7 @@ export interface operations {
                 authorization: string;
             };
             path: {
+                /** @description 控制台中配置的接入应用 Key */
                 appKey: string;
                 id: string;
             };
@@ -1311,7 +1573,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DeliveryResultDto"];
+                };
+            };
+            /** @description 参数、目标、消息或幂等键无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 需要有效的应用 API Key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description API Key 不属于该应用或无权访问目标 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 投递不存在或不属于该应用 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+            /** @description 服务暂时不可用或投递积压达到受理上限 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
             };
         };
     };

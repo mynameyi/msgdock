@@ -1,6 +1,7 @@
 import { Alert, Button, Form, Input, Typography } from 'antd';
 import { useMutation } from '@tanstack/react-query';
 import { login, setup, Session } from './api';
+import { Link } from 'react-router-dom';
 export function IdentityPage({
   needsSetup,
   onLogin,
@@ -84,6 +85,10 @@ export function IdentityPage({
           </Button>
         </Form>
         <div className="identity-foot">自托管 · AGPL-3.0-only · v0.2.0</div>
+        <div className="identity-public-links">
+          <Link to="/">返回首页</Link>
+          <Link to="/docs">开发文档</Link>
+        </div>
       </section>
     </div>
   );

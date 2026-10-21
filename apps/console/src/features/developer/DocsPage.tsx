@@ -1,28 +1,20 @@
-import { useState } from 'react';
-import { Alert, Button, Card, Select, Steps, Typography } from 'antd';
-import { useQuery } from '@tanstack/react-query';
-import { getApplications } from '../applications/api';
-import { getTargets } from '../channels/api';
+import { Alert, Button, Card, Steps, Typography } from 'antd';
+import { Link } from 'react-router-dom';
 import { PageTitle } from '../../shared/ui';
 import { DocsNavigation } from './DocsNavigation';
 export function DocsPage() {
-  const apps = useQuery({ queryKey: ['applications'], queryFn: getApplications });
-  const targets = useQuery({ queryKey: ['targets'], queryFn: getTargets });
-  const [id, setId] = useState<string>();
-  const app = apps.data?.find((a) => a.id === id) ?? apps.data?.[0];
-  const target = targets.data?.find((t) => app?.allowedTargetIds.includes(t.id));
   const example = [
-    `curl -X POST '${location.origin}/api/v1/apps/${app?.key ?? 'order-service'}/notifications'`,
-    ...(app?.authMode === 'none' ? [] : ["  -H 'Authorization: Bearer <API_KEY>'"]),
+    `curl -X POST '${location.origin}/api/v1/apps/<APP_KEY>/notifications'`,
+    "  -H 'Authorization: Bearer <API_KEY>'",
     "  -H 'Content-Type: application/json'",
-    "  -H 'Idempotency-Key: order-20261020-001'",
-    `  -d '${JSON.stringify({ event: 'order.paid', target: { type: 'targets', ids: [target?.id ?? '<TARGET_ID>'] }, message: { text: '订单支付成功。' }, expires_in: 3600 }, null, 2)}'`,
+    "  -H 'Idempotency-Key: <UNIQUE_EVENT_ID>'",
+    `  -d '${JSON.stringify({ event: 'order.paid', target: { type: 'targets', ids: ['<TARGET_ID>'] }, message: { text: '订单支付成功。' }, expires_in: 3600 }, null, 2)}'`,
   ].join(' \\\n');
   return (
     <>
       <PageTitle
-        title="API 文档"
-        description="从业务服务端调用统一 HTTP API，即可发送多渠道通知。"
+        title="开发文档"
+        description="从第一条通知开始，接入统一 API，或开发自己的渠道插件。"
         actions={
           <Button href="/openapi.json" target="_blank">
             查看 OpenAPI JSON ↗
@@ -30,6 +22,26 @@ export function DocsPage() {
         }
       />
       <DocsNavigation />
+      <div className="docs-entry-grid">
+        <Link to="/docs/swagger">
+          <b>
+            Swagger UI <span>↗</span>
+          </b>
+          <p>查看请求结构、填写 API Key，在线调试接口。</p>
+        </Link>
+        <Link to="/docs/redoc">
+          <b>
+            ReDoc <span>↗</span>
+          </b>
+          <p>阅读完整接口参考、参数和返回值。</p>
+        </Link>
+        <Link to="/docs/plugins">
+          <b>
+            渠道插件开发 <span>↗</span>
+          </b>
+          <p>了解 SDK、配置 Schema 与插件接入约定。</p>
+        </Link>
+      </div>
       <Card title="接入步骤">
         <Steps
           size="small"
@@ -41,24 +53,16 @@ export function DocsPage() {
           ]}
         />
       </Card>
-      <Card
-        title="发送通知"
-        className="mt20"
-        extra={
-          <Select
-            aria-label="文档示例应用"
-            style={{ minWidth: 160 }}
-            value={app?.id}
-            placeholder="选择应用"
-            onChange={setId}
-            options={apps.data?.map((a) => ({ label: a.name, value: a.id }))}
-          />
-        }
-      >
+      <Card title="发送通知" className="mt20">
         <Typography.Paragraph>
           默认鉴权：<Typography.Text code>Authorization: Bearer &lt;API_KEY&gt;</Typography.Text>
           。密钥由业务系统服务端保存；显式设为非鉴权的应用可以省略此请求头。
         </Typography.Paragraph>
+        <p className="muted">
+          管理员先在<Link to="/console">管理控制台</Link>
+          配置渠道、应用和授权目标。以下均为占位示例，请替换
+          APP_KEY、API_KEY、TARGET_ID，并为新事件生成唯一幂等键。
+        </p>
         <Typography.Paragraph copyable={{ text: example }}>
           <pre className="api-code">{example}</pre>
         </Typography.Paragraph>
@@ -69,7 +73,7 @@ export function DocsPage() {
         />
       </Card>
       <Card title="查询通知" className="mt20">
-        <pre className="api-code">{`GET /api/v1/apps/${app?.key ?? '{app_key}'}/notifications/{notification_id}\nAuthorization: Bearer <API_KEY>`}</pre>
+        <pre className="api-code">{`GET /api/v1/apps/{appKey}/notifications/{notification_id}\nAuthorization: Bearer <API_KEY>`}</pre>
         <p>即使发送采用非鉴权模式，结果查询也始终需要有效的应用 API Key。</p>
       </Card>
       <Card title="模板与主题" className="mt20">

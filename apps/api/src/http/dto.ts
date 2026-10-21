@@ -98,35 +98,63 @@ export class TemplateDto {
   @ApiProperty() @IsString() @Length(1, 5000) body!: string;
 }
 export class TargetDto {
-  @ApiProperty({ enum: ['targets', 'topic'] }) @IsIn(['targets', 'topic']) type!:
-    'targets' | 'topic';
-  @ApiPropertyOptional({ type: [String] })
+  @ApiProperty({
+    enum: ['targets', 'topic'],
+    example: 'targets',
+    description: 'targets 使用 ids；topic 使用 key。所有目标需在应用授权范围内。',
+  })
+  @IsIn(['targets', 'topic'])
+  type!: 'targets' | 'topic';
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['00000000-0000-4000-8000-000000000001'],
+    description: 'type=targets 时填写实际目标 UUID，最多 500 个',
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(500)
   @IsUUID('4', { each: true })
   ids?: string[];
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) key?: string;
+  @ApiPropertyOptional({ example: 'finance', description: 'type=topic 时填写主题 Key' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  key?: string;
 }
 export class TextDto {
-  @ApiProperty() @IsString() @Length(1, 2000) text!: string;
+  @ApiProperty({
+    example: '订单支付成功。',
+    description: '非空文本，最终 UTF-8 内容最多 2000 字节，且不能超过渠道插件上限',
+  })
+  @IsString()
+  @Length(1, 2000)
+  text!: string;
 }
 export class TemplateRefDto {
   @ApiProperty() @IsString() @MaxLength(50) key!: string;
 }
 export class NotificationDto {
-  @ApiProperty() @IsString() @Length(1, 100) event!: string;
+  @ApiProperty({ example: 'order.paid', minLength: 1, maxLength: 100 })
+  @IsString()
+  @Length(1, 100)
+  event!: string;
   @ApiProperty({ type: TargetDto })
   @IsDefined()
   @ValidateNested()
   @Type(() => TargetDto)
   target!: TargetDto;
-  @ApiPropertyOptional({ type: TextDto })
+  @ApiPropertyOptional({
+    type: TextDto,
+    description: '直接文本消息；message 与 template 必须且只能提供一个',
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => TextDto)
   message?: TextDto;
-  @ApiPropertyOptional({ type: TemplateRefDto })
+  @ApiPropertyOptional({
+    type: TemplateRefDto,
+    description: '引用控制台创建的模板；提供 template 时省略 message',
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => TemplateRefDto)
@@ -135,7 +163,12 @@ export class NotificationDto {
   @IsOptional()
   @IsObject()
   variables?: Record<string, unknown>;
-  @ApiPropertyOptional({ default: 3600 })
+  @ApiPropertyOptional({
+    default: 3600,
+    minimum: 1,
+    maximum: 604800,
+    description: '有效期，单位秒',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

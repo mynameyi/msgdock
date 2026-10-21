@@ -833,7 +833,9 @@
             "name": "appKey",
             "required": true,
             "in": "path",
+            "description": "控制台中配置的接入应用 Key",
             "schema": {
+              "example": "order-service",
               "type": "string"
             }
           },
@@ -841,17 +843,10 @@
             "name": "idempotency-key",
             "required": true,
             "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
             "description": "应用内唯一，1–200 个可见 ASCII 字符",
-            "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "example": "replace-with-your-unique-event-id"
             }
           }
         ],
@@ -861,13 +856,116 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/NotificationDto"
+              },
+              "examples": {
+                "text": {
+                  "summary": "文本消息（替换目标 UUID）",
+                  "value": {
+                    "event": "order.paid",
+                    "target": {
+                      "type": "targets",
+                      "ids": [
+                        "00000000-0000-4000-8000-000000000001"
+                      ]
+                    },
+                    "message": {
+                      "text": "订单支付成功。"
+                    },
+                    "expires_in": 3600
+                  }
+                },
+                "template": {
+                  "summary": "主题与模板（先在控制台创建）",
+                  "value": {
+                    "event": "order.paid",
+                    "target": {
+                      "type": "topic",
+                      "key": "finance"
+                    },
+                    "template": {
+                      "key": "order_paid"
+                    },
+                    "variables": {
+                      "order_no": "20261021001",
+                      "amount": "299.00"
+                    },
+                    "expires_in": 3600
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "202": {
-            "description": "已持久化受理，平台投递在后台进行"
+            "description": "已持久化受理，平台投递在后台进行",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedNotificationDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数、目标、消息或幂等键无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要有效的应用 API Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 不属于该应用或无权访问目标",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "相同幂等键对应不同请求",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "应用发送频率超限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用或投递积压达到受理上限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -884,13 +982,16 @@
     },
     "/api/v1/apps/{appKey}/notifications/{id}": {
       "get": {
+        "description": "始终需要该应用的 API Key，包括发送采用非鉴权模式的应用。",
         "operationId": "NotificationsController_get",
         "parameters": [
           {
             "name": "appKey",
             "required": true,
             "in": "path",
+            "description": "控制台中配置的接入应用 Key",
             "schema": {
+              "example": "order-service",
               "type": "string"
             }
           },
@@ -913,7 +1014,64 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数、目标、消息或幂等键无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要有效的应用 API Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 不属于该应用或无权访问目标",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "通知不存在或不属于该应用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用或投递积压达到受理上限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -921,6 +1079,7 @@
             "bearer": []
           }
         ],
+        "summary": "查询通知及投递概况",
         "tags": [
           "通知 API"
         ]
@@ -928,13 +1087,16 @@
     },
     "/api/v1/apps/{appKey}/notifications/{id}/deliveries": {
       "get": {
+        "description": "每页最多 50 条。使用返回的 nextCursor 继续查询；null 表示末页。",
         "operationId": "NotificationsController_deliveries",
         "parameters": [
           {
             "name": "appKey",
             "required": true,
             "in": "path",
+            "description": "控制台中配置的接入应用 Key",
             "schema": {
+              "example": "order-service",
               "type": "string"
             }
           },
@@ -958,6 +1120,7 @@
             "name": "cursor",
             "required": false,
             "in": "query",
+            "description": "上一页返回的 nextCursor",
             "schema": {
               "type": "string"
             }
@@ -965,7 +1128,64 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数、目标、消息或幂等键无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要有效的应用 API Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 不属于该应用或无权访问目标",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "通知不存在或不属于该应用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用或投递积压达到受理上限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -973,6 +1193,7 @@
             "bearer": []
           }
         ],
+        "summary": "分页查询通知的投递结果",
         "tags": [
           "通知 API"
         ]
@@ -986,7 +1207,9 @@
             "name": "appKey",
             "required": true,
             "in": "path",
+            "description": "控制台中配置的接入应用 Key",
             "schema": {
+              "example": "order-service",
               "type": "string"
             }
           },
@@ -1009,7 +1232,64 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数、目标、消息或幂等键无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要有效的应用 API Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 不属于该应用或无权访问目标",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "投递不存在或不属于该应用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用或投递积压达到受理上限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1017,6 +1297,7 @@
             "bearer": []
           }
         ],
+        "summary": "查询单个目标的投递结果",
         "tags": [
           "通知 API"
         ]
@@ -1269,6 +1550,36 @@
           "text"
         ]
       },
+      "ApiErrorDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "HTTP_401"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ]
+      },
       "TargetDto": {
         "type": "object",
         "properties": {
@@ -1277,16 +1588,24 @@
             "enum": [
               "targets",
               "topic"
-            ]
+            ],
+            "example": "targets",
+            "description": "targets 使用 ids；topic 使用 key。所有目标需在应用授权范围内。"
           },
           "ids": {
+            "example": [
+              "00000000-0000-4000-8000-000000000001"
+            ],
+            "description": "type=targets 时填写实际目标 UUID，最多 500 个",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "example": "finance",
+            "description": "type=topic 时填写主题 Key"
           }
         },
         "required": [
@@ -1297,7 +1616,9 @@
         "type": "object",
         "properties": {
           "text": {
-            "type": "string"
+            "type": "string",
+            "example": "订单支付成功。",
+            "description": "非空文本，最终 UTF-8 内容最多 2000 字节，且不能超过渠道插件上限"
           }
         },
         "required": [
@@ -1319,16 +1640,29 @@
         "type": "object",
         "properties": {
           "event": {
-            "type": "string"
+            "type": "string",
+            "example": "order.paid",
+            "minLength": 1,
+            "maxLength": 100
           },
           "target": {
             "$ref": "#/components/schemas/TargetDto"
           },
           "message": {
-            "$ref": "#/components/schemas/TextDto"
+            "description": "直接文本消息；message 与 template 必须且只能提供一个",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TextDto"
+              }
+            ]
           },
           "template": {
-            "$ref": "#/components/schemas/TemplateRefDto"
+            "description": "引用控制台创建的模板；提供 template 时省略 message",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TemplateRefDto"
+              }
+            ]
           },
           "variables": {
             "type": "object",
@@ -1336,12 +1670,243 @@
           },
           "expires_in": {
             "type": "number",
-            "default": 3600
+            "default": 3600,
+            "minimum": 1,
+            "maximum": 604800,
+            "description": "有效期，单位秒"
           }
         },
         "required": [
           "event",
           "target"
+        ]
+      },
+      "AcceptedNotificationDto": {
+        "type": "object",
+        "properties": {
+          "notification_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted_for_processing"
+            ]
+          },
+          "delivery_count": {
+            "type": "number"
+          },
+          "idempotency_hit": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notification_id",
+          "status",
+          "delivery_count",
+          "idempotency_hit",
+          "request_id"
+        ]
+      },
+      "DeliverySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sending",
+              "retry_wait",
+              "accepted",
+              "failed",
+              "unknown",
+              "expired",
+              "cancelled"
+            ],
+            "description": "accepted 表示平台接受；unknown 表示结果不明，重发前请人工核实"
+          },
+          "targetName": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "number"
+          },
+          "lastCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastMessage": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "targetName",
+          "attemptCount"
+        ]
+      },
+      "NotificationResultDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliverySummaryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "createdAt",
+          "expiresAt",
+          "deliveries"
+        ]
+      },
+      "DeliveryListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sending",
+              "retry_wait",
+              "accepted",
+              "failed",
+              "unknown",
+              "expired",
+              "cancelled"
+            ],
+            "description": "accepted 表示平台接受；unknown 表示结果不明，重发前请人工核实"
+          },
+          "targetName": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "number"
+          },
+          "lastCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "targetName",
+          "attemptCount",
+          "createdAt"
+        ]
+      },
+      "DeliveryPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryListItemDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "下一页 cursor；null 表示没有后续页"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "DeliveryResultDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sending",
+              "retry_wait",
+              "accepted",
+              "failed",
+              "unknown",
+              "expired",
+              "cancelled"
+            ],
+            "description": "accepted 表示平台接受；unknown 表示结果不明，重发前请人工核实"
+          },
+          "targetName": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "number"
+          },
+          "lastCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notificationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "targetName",
+          "attemptCount",
+          "createdAt",
+          "notificationId"
         ]
       }
     }

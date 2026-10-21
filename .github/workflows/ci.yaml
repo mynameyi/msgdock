@@ -34,6 +34,7 @@ jobs:
           TEST_CONTAINER: msgdock-ci
         run: |
           export TEST_SETUP_TOKEN="$(docker exec msgdock-ci cat /data/secrets/setup-token)"
+          node scripts/public-docs-check.mjs
           node scripts/integration.mjs
           docker restart --timeout 90 msgdock-ci
           node scripts/wait-ready.mjs
