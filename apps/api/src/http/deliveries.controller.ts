@@ -75,7 +75,7 @@ export class DeliveriesController {
     } catch {}
     const health = await this.deliveries.health();
     return {
-      version: '0.1.0',
+      version: '0.2.0',
       deployment: 'single-container',
       database: 'PostgreSQL 18',
       queue: 'Redis / BullMQ',

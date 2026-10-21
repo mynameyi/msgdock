@@ -129,7 +129,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
                     : '正在检查服务'
                 }
               />
-              <small>v0.1.0 · 私有部署</small>
+              <small>v0.2.0 · 私有部署</small>
             </div>
           )}
         </div>

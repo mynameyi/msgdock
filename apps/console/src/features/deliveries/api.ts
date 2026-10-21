@@ -1,5 +1,8 @@
 import { Delivery, client, unwrap } from '../../shared/api';
 export type DeliveryDetail = Delivery & {
+  pluginId: string;
+  pluginVersion: string;
+  configVersion: number;
   text: string;
   notificationId: string;
   attempts: {

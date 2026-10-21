@@ -74,6 +74,53 @@ const response = await fetch(
 const data = await response.json();
 assert.equal(data.deliveries[0].status, 'cancelled');
 assert.equal(data.deliveries[0].attemptCount, 0);
+const unavailable = await deferred();
+execFileSync(
+  'docker',
+  [
+    'exec',
+    '-u',
+    'postgres',
+    container,
+    'psql',
+    '-U',
+    'postgres',
+    '-d',
+    'msgdock',
+    '-tAc',
+    `UPDATE "Delivery" SET "pluginVersion"='99.0.0',"nextAttemptAt"=(now() AT TIME ZONE 'UTC'),generation=generation+1 WHERE id='${unavailable.delivery.id}' AND status='pending';`,
+  ],
+  { stdio: 'pipe' },
+);
+let versionRejected = false;
+for (let n = 0; n < 40; n++) {
+  const result = await fetch(
+    `${state.base}/api/v1/apps/${state.appKey}/notifications/${unavailable.id}`,
+    { headers: publicHeaders },
+  );
+  const notice = await result.json();
+  if (notice.deliveries[0].status === 'failed') {
+    assert.equal(notice.deliveries[0].lastCode, 'plugin_unavailable');
+    assert.equal(notice.deliveries[0].attemptCount, 0);
+    versionRejected = true;
+    break;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 300));
+}
+assert(versionRejected, 'Missing pinned plugin must fail before sending');
+const replay = await fetch(
+  `${state.base}/api/admin/deliveries/${unavailable.delivery.id}/replays`,
+  {
+    method: 'POST',
+    headers: {
+      cookie: state.cookie,
+      'x-csrf-token': state.csrf,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ reason: '验证缺失插件不能改用当前版本重发', confirmed: true }),
+  },
+);
+assert.equal(replay.status, 400);
 console.log(
   JSON.stringify({
     ok: true,
@@ -82,6 +129,8 @@ console.log(
       'no duplicate platform attempt',
       'pending delivery cancellation',
       'cancelled generation does not send',
+      'missing pinned plugin fails without a platform attempt',
+      'replay never falls back to a different plugin version',
     ],
   }),
 );

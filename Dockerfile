@@ -10,6 +10,11 @@ COPY apps/worker/package.json apps/worker/package.json
 COPY apps/console/package.json apps/console/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/channels/package.json packages/channels/package.json
+COPY packages/plugin-sdk/package.json packages/plugin-sdk/package.json
+COPY plugins/wecom-webhook/package.json plugins/wecom-webhook/package.json
+COPY plugins/feishu-webhook/package.json plugins/feishu-webhook/package.json
+COPY plugins/dingtalk-bot/package.json plugins/dingtalk-bot/package.json
+COPY plugins/mock/package.json plugins/mock/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
@@ -29,6 +34,7 @@ WORKDIR /app
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
+COPY --from=build /app/plugins ./plugins
 COPY --from=build /app/apps/api ./apps/api
 COPY --from=build /app/apps/worker ./apps/worker
 COPY --from=build /app/apps/console/dist ./public

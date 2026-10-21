@@ -42,7 +42,7 @@ export default ts.config(
     },
   },
   {
-    files: ['packages/channels/src/**/*.ts'],
+    files: ['packages/channels/src/**/*.ts', 'plugins/*/src/**/*.ts', 'packages/plugin-sdk/src/**/*.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: ['@msgdock/server', '**/apps/**'] }] },
   },
 );

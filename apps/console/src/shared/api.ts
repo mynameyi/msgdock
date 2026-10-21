@@ -14,13 +14,15 @@ export type Target = {
   id: string;
   name: string;
   channelId: string;
-  config: { openConversationId?: string };
+  config: Record<string, unknown>;
   channel: { name: string; type: string; enabled: boolean };
 };
 export type Channel = {
   id: string;
   name: string;
   type: string;
+  pluginVersion: string;
+  configVersion: number;
   enabled: boolean;
   lastStatus: string;
   lastCheckedAt: string | null;
@@ -44,12 +46,6 @@ export type Delivery = {
   channelId: string;
   replayOfDeliveryId: string | null;
   notification: { event: string; application: { id: string; name: string; key: string } };
-};
-export const channelNames: Record<string, string> = {
-  'wecom.group_webhook': '企业微信',
-  'feishu.group_webhook': '飞书',
-  'dingtalk.enterprise_bot': '钉钉',
-  mock: '测试渠道',
 };
 export const statusNames: Record<string, string> = {
   pending: '排队中',

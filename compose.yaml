@@ -1,7 +1,7 @@
 services:
   msgdock:
     build: .
-    image: msgdock:0.1.0
+    image: msgdock:0.2.0
     container_name: msgdock
     restart: unless-stopped
     ports:

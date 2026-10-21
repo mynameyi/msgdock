@@ -89,6 +89,9 @@ importers:
       '@msgdock/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@tanstack/react-query':
         specifier: ^5.90.0
         version: 5.104.4(@types/react@19.3.0)(react@19.3.1)
@@ -154,11 +157,30 @@ importers:
 
   packages/channels:
     dependencies:
-      '@msgdock/contracts':
+      '@msgdock/plugin-dingtalk-bot':
         specifier: workspace:*
-        version: link:../contracts
+        version: link:../../plugins/dingtalk-bot
+      '@msgdock/plugin-feishu-webhook':
+        specifier: workspace:*
+        version: link:../../plugins/feishu-webhook
+      '@msgdock/plugin-mock':
+        specifier: workspace:*
+        version: link:../../plugins/mock
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+      '@msgdock/plugin-wecom-webhook':
+        specifier: workspace:*
+        version: link:../../plugins/wecom-webhook
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
 
   packages/database:
     dependencies:
@@ -168,6 +190,8 @@ importers:
       prisma:
         specifier: ~6.19.0
         version: 6.19.3(typescript@5.9.3)
+
+  packages/plugin-sdk: {}
 
   packages/server:
     dependencies:
@@ -180,6 +204,9 @@ importers:
       '@msgdock/database':
         specifier: workspace:*
         version: link:../database
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
       '@nestjs/common':
         specifier: ^11.1.0
         version: 11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
@@ -202,6 +229,30 @@ importers:
       '@types/mustache':
         specifier: ^4.2.0
         version: 4.2.6
+
+  plugins/dingtalk-bot:
+    dependencies:
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+
+  plugins/feishu-webhook:
+    dependencies:
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+
+  plugins/mock:
+    dependencies:
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+
+  plugins/wecom-webhook:
+    dependencies:
+      '@msgdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
 
 packages:
 

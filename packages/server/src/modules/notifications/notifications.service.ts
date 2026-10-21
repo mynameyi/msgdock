@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma } from '@msgdock/database';
+import { channelRegistry } from '@msgdock/channels';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService, RedisService, sha256 } from '../../infrastructure';
 import { renderText, requestHash } from './render';
@@ -98,6 +99,21 @@ export class NotificationsService {
     }
     if (!text.trim() || Buffer.byteLength(text, 'utf8') > 2000)
       throw new BadRequestException('消息不能为空且最多 2000 字节');
+    for (const target of targets) {
+      try {
+        const descriptor = channelRegistry.get(
+          target.channel.type,
+          target.channel.pluginVersion,
+        ).descriptor;
+        if (
+          descriptor.configVersion !== target.channel.configVersion ||
+          Buffer.byteLength(text, 'utf8') > descriptor.capabilities.maxTextBytes
+        )
+          throw new Error('插件配置版本或消息能力不兼容');
+      } catch {
+        throw new BadRequestException('目标插件版本不可用或不支持当前消息，请检查渠道');
+      }
+    }
     const queued = await this.db.delivery.count({
       where: { status: { in: ['pending', 'retry_wait', 'sending'] } },
     });
@@ -126,6 +142,9 @@ export class NotificationsService {
           targetId: target.id,
           targetName: target.name,
           targetSnapshot: target.config as Prisma.InputJsonValue,
+          pluginId: target.channel.type,
+          pluginVersion: target.channel.pluginVersion,
+          configVersion: target.channel.configVersion,
           text,
           expiresAt,
         }));

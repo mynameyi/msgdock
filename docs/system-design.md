@@ -2,16 +2,16 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.3 |
+| 文档版本 | v0.4 |
 | 更新日期 | 2026-10-21 |
-| 状态 | 架构基线与演进目标；0.1.0 已实现范围见交付说明 |
+| 状态 | 架构基线与演进目标；0.2.0 加入可信内置渠道插件 |
 | 仓库 | [mynameyi/msgdock](https://github.com/mynameyi/msgdock) |
 | 项目许可证 | AGPL-3.0-only |
 | 定位 | 面向多个 Web 业务系统复用、支持私有化部署的多渠道 IM 通知服务 |
 
 本文确定首版的技术栈、前后端代码组织、模块边界、消息可靠性和部署方式。目录、接口、状态和默认参数是实现约定；本文不代表这些功能已经完成，也不包含实测容量承诺。
 
-0.1.0 已交付可运行的单容器 MVP，具体范围、工程取舍和未实现能力以[版本交付说明](releases/v0.1.0.md)为准；部署操作见[部署文档](deployment.md)。后文中的多角色、自动保留、完整回调和扩容等仍是演进目标，不能据此认定 MVP 已全部覆盖。
+0.2.0 在单容器 MVP 上完成内置渠道插件化，具体范围、工程取舍和未实现能力以[版本交付说明](releases/v0.2.0.md)为准；插件的当前实现约定见[渠道插件文档](channel-plugins.md)，部署操作见[部署文档](deployment.md)。后文中的多角色、自动保留、完整回调和扩容等仍是演进目标，不能据此认定当前版本已全部覆盖。
 
 阅读导航：[技术栈](#3-技术栈) · [仓库与包依赖](#5-monorepo-与包依赖) · [前端组织](#6-前端代码组织) · [后端组织](#7-后端代码组织) · [渠道设计](#8-渠道与消息内容设计) · [可靠投递](#10-通知受理与可靠投递) · [API](#11-api-与协议契约) · [实施顺序](#15-实施顺序与评审边界)。
 
@@ -25,7 +25,7 @@
 | 后端组织 | NestJS Feature Modules，模块内部按职责分层 | 使用 NestJS 原生模块与依赖注入机制，按业务能力封装服务 |
 | 后端形态 | 模块化单体，共享业务模块，API 与 Worker 为独立进程 | 默认在同一个容器运行；保留以后拆分进程部署的能力 |
 | 核心建模 | 为通知、投递、发送尝试定义明确模型与状态规则 | 核心复杂度在可靠投递、平台差异和失败恢复 |
-| 渠道扩展 | 稳定的渠道接口与进程内适配器注册 | 新平台接入时复用调度、审计和状态处理 |
+| 渠道扩展 | 核心引擎、版本化插件 SDK、独立渠道包与启动注册中心 | 插件声明协议、Schema 与能力，核心统一调度；新增平台不修改业务服务或 React 平台表单 |
 | 数据权威 | PostgreSQL 保存业务事实；Redis 承载队列与协调状态 | 队列丢失后可以依据数据库检查和重建未执行任务 |
 | 受理一致性 | 消息、投递计划与 Outbox 在同一事务提交 | 消除数据库提交与队列入队之间的直接双写空隙 |
 | 执行语义 | 按至少一次执行设计，使用幂等、租约与结果核查控制重复 | 第三方接口并不统一提供端到端幂等和可查询回执 |
@@ -139,11 +139,17 @@ msgdock/
 │   └── worker/                  # 队列消费者、调度器、连接运行时装配
 ├── packages/
 │   ├── server/                  # API / Worker 共用的 NestJS 业务模块
-│   ├── channels/                # 各平台适配器及注册工厂
+│   ├── channels/                # 注册中心、内置装配、宿主执行器
+│   ├── plugin-sdk/              # 插件类型、Schema / UI 描述、HTTP 与结果契约
 │   ├── contracts/               # 后端包间稳定类型、渠道与任务接口
 │   ├── database/                # Prisma schema、迁移、数据库客户端
 │   ├── api-client/              # 从公开 OpenAPI 生成的前端客户端与类型
 │   └── tooling/                 # 共享 TypeScript、ESLint 等工程配置
+├── plugins/                     # 独立平台包，只依赖 plugin-sdk
+│   ├── wecom-webhook/
+│   ├── feishu-webhook/
+│   ├── dingtalk-bot/
+│   └── mock/                    # 仅在独立测试模式注册
 ├── docs/
 │   └── system-design.md
 └── deploy/                      # Dockerfile、入口脚本、Supervisor、内置数据服务配置
@@ -151,9 +157,9 @@ msgdock/
 
 依赖约定：
 
-1. `console` 依赖 `api-client` 与自身前端代码，不导入 `server`、Prisma 或平台 SDK。
+1. `console` 依赖 `api-client`、插件描述的 SDK 类型与自身前端代码，不导入 `server`、Prisma 或平台插件实现；运行时目录来自管理 API。
 2. `api` 与 `worker` 都依赖 `server` 的公开模块，不互相导入对方的应用目录。
-3. `server` 可以使用 `database`、`channels`、`contracts`；`channels` 使用 `contracts` 和平台 SDK，不反向导入 `server`。
+3. `server` 可以使用 `database`、`channels`、`contracts` 和插件 SDK；`channels` 装配独立插件，各插件依赖 `plugin-sdk`，不反向导入 `server`。
 4. `contracts` 保持纯 TypeScript，描述跨包边界；HTTP 契约以服务端 DTO 生成的 OpenAPI 为准，客户端不另维护一套重复接口定义。
 5. 依赖通过 package.json、受限 exports 和 ESLint 规则显式声明，CI 检查循环依赖与跨边界导入。
 
@@ -279,14 +285,14 @@ apps/worker/src/
 
 Controller 不直接调用 Prisma 或平台 SDK；队列 Processor 与 HTTP Controller 调用相同业务服务。跨模块调用经过模块公开 API，不读取其他模块内部文件。接口只抽象在平台、存储和执行边界等有替换或测试价值的位置。
 
-使用 NestJS 显式 Provider Token 注入渠道注册表与关键外部能力。生产运行不允许上传并动态执行第三方插件；新增适配器通过代码评审、测试和随版本发布接入。
+当前 API 与 Worker 复用 channels 包导出的内置注册表，在各自进程启动时注册相同插件。插件通过 SDK 使用宿主 HTTP 与时间能力，业务服务不判断具体平台。生产运行不允许上传并动态执行第三方插件；新增内置插件通过代码评审、测试、装配声明和随镜像发布接入。外部插件安装与隔离执行作为独立后续阶段。
 
 ## 8. 渠道与消息内容设计
 
 ### 8.1 平台、类型、实例与目标
 
 - **平台**：企业微信、飞书、钉钉、微信。
-- **渠道类型**：例如 wecom.group_webhook、wecom.aibot、feishu.app、dingtalk.enterprise_bot。
+- **渠道类型 / 插件 ID**：按接入方式划分，例如 wecom.group_webhook、wecom.aibot、feishu.app、dingtalk.enterprise_bot；一个插件可创建多个实例。
 - **渠道实例**：一个具体机器人或企业应用的配置与凭证。
 - **目标**：注册的群、用户、部门或平台会话，绑定所属渠道实例及可发送范围。
 - **主题**：业务使用的逻辑接收集合，例如 finance；路由到一个或多个已授权目标。
@@ -310,21 +316,28 @@ Controller 不直接调用 Prisma 或平台 SDK；队列 Processor 与 HTTP Cont
 
 ### 8.3 适配器契约
 
-下例表示职责，具体字段在工程初始化时形成类型定义：
+当前 SDK 接口如下，完整字段和约束见[插件约定](channel-plugins.md)：
 
 ```typescript
+interface ChannelPlugin {
+  descriptor: PluginDescriptor;
+  validateConfig?(config: ConfigValues): void;
+  create(context: PluginContext, config: ConfigValues): ChannelAdapter;
+}
 interface ChannelAdapter {
-  readonly type: string;
-  readonly capabilities: ChannelCapabilities;
-  validate(config: ChannelConfig, message: MessageEnvelope): ValidationResult;
-  render(message: MessageEnvelope, target: TargetSnapshot): RenderedMessage;
-  send(context: SendContext, message: RenderedMessage): Promise<SendOutcome>;
+  send(input: SendInput): Promise<SendOutcome>;
+  start?(): Promise<void>;
+  stop?(): Promise<void>;
 }
 ```
 
-能力声明覆盖主动发送、文本、Markdown、卡片、交互回调、媒体、目标类型、平台幂等与结果查询。长连接生命周期采用独立的 Connector 契约，由连接运行时负责启动、停止和健康检查。
+descriptor 声明插件 / SDK / 配置版本、configSchema、targetSchema、UI 描述、消息能力、限额和网络主机。0.2.0 的已支持能力为 HTTP 文本，Schema 为平面对象和字符串、布尔、整数属性；核心用 Ajv 校验，前端按描述生成 Ant Design 表单。发送、限流执行、重试、凭证加密与状态写入由核心负责，平台鉴权、消息序列化和结果解析归插件。
+
+运行时复用实例适配器并调用 start / stop，但本版尚未实现长连接渠道。后续再扩展 Markdown、卡片、事件、媒体、平台幂等与结果查询能力；连接租约和归属采用下一节描述的演进方案。
 
 SendOutcome 区分平台接受、明确可重试失败、永久失败与结果未知。平台 HTTP 200 内的业务错误仍需解析。结果包含平台消息 ID、错误分类、可选 retryAfter 和脱敏诊断信息。
+
+Channel 固定插件版本与配置结构版本；Delivery 在受理时固定插件 ID、精确插件版本和配置结构版本，重试及关联重发沿用。缺失原插件版本时明确失败，不自动改用最新版本。已有渠道不能原地切换插件版本，先创建新渠道并排空旧任务；凭证仍使用当前有效密文。
 
 ### 8.4 模板、渲染与媒体
 
@@ -349,12 +362,12 @@ SendOutcome 区分平台接受、明确可重试失败、永久失败与结果�
 | Workspace | 部署工作空间与资源归属 |
 | User / Role / Session | 管理身份、权限、服务端会话与到期信息 |
 | Application / ApiKey | 接入应用、密钥摘要、权限范围、撤销与轮换 |
-| ChannelInstance | 渠道类型、非敏感配置、加密凭证、启停和健康状态 |
+| ChannelInstance | 插件 ID、精确插件版本、配置结构版本、加密配置、启停和健康状态 |
 | ConnectionLease | 需要长连接的渠道实例、持有者、租约期限和递增 epoch；按渠道阶段启用 |
 | Target / Topic / Route | 已注册目标、逻辑主题和路由关系；包含应用授权 |
 | Template / TemplateVersion | 模板标识、不可变版本、变量定义与渲染内容 |
 | Notification | 应用、事件、原始受理时间、期限、固定快照、关联标识 |
-| Delivery | 目标和渠道、状态、期限、调度代次、下次执行时间、执行租约与可选 ordering_key |
+| Delivery | 固定插件 ID / 版本 / 配置结构版本、目标和渠道、状态、期限、调度代次、下次执行时间、执行租约与可选 ordering_key |
 | DeliveryAttempt | 每次真实发送的请求标识、起止时间、分类结果和平台消息 ID |
 | IdempotencyRecord | 工作空间、应用、操作、幂等键、请求摘要、通知 ID、保留期限 |
 | OutboxEvent | 待入队投递、调度代次、notBefore、发布状态和发布租约 |
@@ -580,7 +593,7 @@ HTTP 与长连接事件都归一化为内部事件。按平台协议验证签名
 
 平台加密主密钥优先从部署 Secret 注入；未配置时在首次初始化生成并保存于 /data/secrets，后续复用，禁止每次启动重新生成。备份必须包含恢复密钥。首次管理员通过一次性初始化流程创建，不提供通用默认密码。
 
-发布目标为单个版本化镜像，例如 `ghcr.io/mynameyi/msgdock:<version>`；当前处于设计阶段，尚未发布可运行镜像。实现后给出一个镜像、一个端口、一个持久化卷的 docker run 示例；可附单服务 Compose 文件作为配置便利方式。
+发布单元为一个版本化镜像；当前可从仓库构建运行，未发布公共镜像仓库制品。内置插件和核心一起构建，启动注册，升级后重启生效。一个镜像、一个端口、一个持久化卷的 docker run 与单服务 Compose 示例见部署文档。
 
 ### 13.2 健康、退出与扩容
 

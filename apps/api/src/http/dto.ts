@@ -45,26 +45,42 @@ export class ApplicationDto {
   allowedTargetIds: string[] = [];
   @ApiProperty({ default: 60 }) @IsInt() @Min(1) @Max(10000) perMinuteLimit: number = 60;
 }
-export class CredentialsDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) webhookUrl?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) secret?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) appKey?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) appSecret?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) robotCode?: string;
-}
 export class ChannelDto {
   @ApiProperty() @IsString() @Length(1, 80) name!: string;
-  @ApiProperty({ enum: ['wecom.group_webhook', 'feishu.group_webhook', 'dingtalk.enterprise_bot'] })
-  @IsIn(['wecom.group_webhook', 'feishu.group_webhook', 'dingtalk.enterprise_bot', 'mock'])
-  type!: 'wecom.group_webhook' | 'feishu.group_webhook' | 'dingtalk.enterprise_bot' | 'mock';
-  @ApiProperty({ type: CredentialsDto })
-  @IsDefined()
-  @ValidateNested()
-  @Type(() => CredentialsDto)
-  credentials!: CredentialsDto;
+  @ApiProperty({ description: '已注册渠道插件的稳定 ID，通过 channel-plugins 查询' })
+  @IsString()
+  @Matches(/^[a-z][a-z0-9_.-]{1,99}$/)
+  type!: string;
+  @ApiPropertyOptional({ description: '新渠道默认使用当前插件版本；已有渠道不可直接切换' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+\.\d+\.\d+$/)
+  pluginVersion?: string;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description: '按插件 configSchema 校验；整体加密保存，永不回传',
+  })
+  @IsObject()
+  credentials!: Record<string, unknown>;
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: '按插件 targetSchema 校验',
+  })
+  @IsOptional()
+  @IsObject()
+  targetConfig?: Record<string, unknown>;
   @ApiProperty({ default: true }) @IsBoolean() enabled: boolean = true;
   @ApiProperty() @IsString() @Length(1, 80) targetName!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) openConversationId?: string;
+  @ApiPropertyOptional({
+    deprecated: true,
+    description: '0.1.0 兼容字段；新客户端使用 targetConfig',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  openConversationId?: string;
 }
 export class TopicDto {
   @ApiProperty() @IsString() @Length(1, 80) name!: string;

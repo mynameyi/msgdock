@@ -45,6 +45,8 @@ model Channel {
   id String @id @default(uuid()) @db.Uuid
   name String
   type String
+  pluginVersion String @default("1.0.0")
+  configVersion Int @default(1)
   credentials String
   enabled Boolean @default(true)
   lastStatus String @default("untested")
@@ -105,6 +107,9 @@ model Delivery {
   targetId String @db.Uuid
   targetName String
   targetSnapshot Json
+  pluginId String
+  pluginVersion String @default("1.0.0")
+  configVersion Int @default(1)
   text String
   status String @default("pending")
   generation Int @default(0)

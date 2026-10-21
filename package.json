@@ -1,6 +1,6 @@
 {
   "name": "msgdock",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@11.25.0",
@@ -8,11 +8,11 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "pnpm --filter @msgdock/contracts build && pnpm --filter @msgdock/channels build && pnpm --filter @msgdock/database build && pnpm --filter @msgdock/server build && pnpm --filter @msgdock/api build && pnpm --filter @msgdock/worker build && node scripts/generate-openapi.cjs && pnpm --filter @msgdock/api-client generate && pnpm --filter @msgdock/console build",
+    "build": "pnpm --filter @msgdock/channels... build && pnpm --filter @msgdock/contracts build && pnpm --filter @msgdock/database build && pnpm --filter @msgdock/server build && pnpm --filter @msgdock/api build && pnpm --filter @msgdock/worker build && node scripts/generate-openapi.cjs && pnpm --filter @msgdock/api-client generate && pnpm --filter @msgdock/console build",
     "typecheck": "pnpm -r run typecheck",
     "test": "jest --runInBand",
-    "lint": "eslint apps packages --max-warnings=0",
-    "format": "prettier --write apps packages deploy",
+    "lint": "eslint apps packages plugins --max-warnings=0",
+    "format": "prettier --write apps packages plugins deploy",
     "db:generate": "pnpm --filter @msgdock/database generate",
     "db:migrate": "node --env-file=.env packages/database/node_modules/prisma/build/index.js migrate deploy --schema packages/database/prisma/schema.prisma",
     "dev:api": "node --watch --env-file=.env apps/api/dist/main.js",

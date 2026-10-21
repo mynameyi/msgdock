@@ -1,4 +1,7 @@
 import { Channel, Target, client, unwrap, components } from '../../shared/api';
+import type { PluginDescriptor } from '@msgdock/plugin-sdk';
+export const getChannelPlugins = async () =>
+  unwrap<PluginDescriptor[]>(await client.GET('/api/admin/channel-plugins'));
 export const getChannels = async () => unwrap<Channel[]>(await client.GET('/api/admin/channels'));
 export const getTargets = async () => unwrap<Target[]>(await client.GET('/api/admin/targets'));
 export const saveChannel = async (body: components['schemas']['ChannelDto'], id?: string) =>

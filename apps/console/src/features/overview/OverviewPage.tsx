@@ -26,10 +26,13 @@ import { getOverview } from './api';
 import { getApplications } from '../applications/api';
 import { TestSend } from '../deliveries/TestSend';
 import { PageTitle, QueryState, StatusTag, number } from '../../shared/ui';
-import { channelNames, Delivery } from '../../shared/api';
+import { Delivery } from '../../shared/api';
+import { getChannelPlugins } from '../channels/api';
 export function OverviewPage() {
   const query = useQuery({ queryKey: ['overview'], queryFn: getOverview, refetchInterval: 10000 });
   const apps = useQuery({ queryKey: ['applications'], queryFn: getApplications });
+  const plugins = useQuery({ queryKey: ['channel-plugins'], queryFn: getChannelPlugins });
+  const channelNames = Object.fromEntries((plugins.data ?? []).map((p) => [p.id, p.name]));
   const [range, setRange] = useState('今日');
   const [test, setTest] = useState(false);
   const [selected, setSelected] = useState<string>();
@@ -209,7 +212,7 @@ export function OverviewPage() {
                     </span>
                     <div>
                       <b>{c.name}</b>
-                      <span className="cell-secondary">{channelNames[c.type]}</span>
+                      <span className="cell-secondary">{channelNames[c.type] ?? c.type}</span>
                     </div>
                     <Badge
                       status={

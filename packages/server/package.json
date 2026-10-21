@@ -1,6 +1,6 @@
 {
   "name": "@msgdock/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,7 +17,8 @@
     "bullmq": "^5.63.0",
     "ioredis": "^5.8.0",
     "mustache": "^4.2.0",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "@msgdock/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/mustache": "^4.2.0"

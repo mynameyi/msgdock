@@ -1,12 +1,12 @@
-# MsgDock 0.1.0 部署与运维
+# MsgDock 0.2.0 部署与运维
 
 ## 单镜像启动
 
 一个最终镜像内运行控制台、API、Worker、PostgreSQL 18 与 Redis。默认只发布 HTTP 端口 3000；内置数据服务监听容器回环地址，无需额外数据库或 Redis 容器。当前已验证 Linux / amd64 容器。
 
 ```sh
-docker build -t msgdock:0.1.0 .
-docker run -d --name msgdock --restart unless-stopped --stop-timeout 90 -p 127.0.0.1:3300:3000 -v msgdock-data:/data msgdock:0.1.0
+docker build -t msgdock:0.2.0 .
+docker run -d --name msgdock --restart unless-stopped --stop-timeout 90 -p 127.0.0.1:3300:3000 -v msgdock-data:/data msgdock:0.2.0
 docker exec msgdock cat /data/secrets/setup-token
 ```
 
@@ -21,7 +21,7 @@ docker compose up --build -d
 网络较慢时可显式指定构建镜像源，无需修改全局 Docker 或 npm 配置：
 
 ```sh
-docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t msgdock:0.1.0 .
+docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t msgdock:0.2.0 .
 ```
 
 ## 初始化、密钥与持久化
@@ -48,6 +48,16 @@ docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build
 5. 使用测试发送检查配置，再从接口文档复制完整请求示例。所有发送都要求 Idempotency-Key。
 
 企业微信与飞书仅接受对应官方 HTTPS Webhook URL；钉钉使用固定官方 OpenAPI 端点。应用调用方不能提交任意外部地址。
+
+## 插件与版本升级
+
+当前内置三个可信渠道插件，配置字段、目标字段、消息能力和实例限额由插件声明。渠道页面读取管理接口 `/api/admin/channel-plugins` 的目录生成配置表单；现有平台的配置与发送方式保持兼容。
+
+插件已编译进镜像，不需要额外挂载目录或启动额外容器。新增或更新插件需要重建整个镜像、重建容器；API 与 Worker 必须使用同一目录。当前不支持上传插件、在线安装、热替换，也不会从 `/data/plugins` 加载代码。开发与发布步骤见[渠道插件约定](channel-plugins.md)。
+
+从 0.1.0 升级时，启动迁移会为现有渠道补充插件版本 1.0.0 / 配置结构版本 1，并从原渠道类型回填历史投递的插件 ID。凭证密文、会话和 API Key 保留，旧任务继续绑定原版本。升级前备份数据库和原密钥；验证渠道、历史任务和队列恢复后再接入新流量。
+
+已有渠道不能直接改插件 ID 或版本。升级采用新建渠道、重新授权和调整主题路由、排空旧任务、停用旧渠道的流程。移除内置插件前检查所有关联渠道和待执行任务；缺失的原版本不会静默换成当前版本，任务会明确失败。注册表支持同时保留多个版本，便于旧任务排空。
 
 ## HTTPS 与访问地址
 

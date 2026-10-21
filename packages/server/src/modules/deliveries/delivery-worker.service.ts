@@ -1,14 +1,8 @@
 import { Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import { randomUUID } from 'node:crypto';
-import {
-  ChannelCredentials,
-  ChannelType,
-  SendJob,
-  SendOutcome,
-  TargetConfig,
-} from '@msgdock/contracts';
-import { sendMessage } from '@msgdock/channels';
+import { ConfigValues, SendJob, SendOutcome } from '@msgdock/contracts';
+import { channelRegistry, ChannelExecutor } from '@msgdock/channels';
 import {
   DatabaseService,
   RedisService,
@@ -27,6 +21,7 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private busy = false;
   private shuttingDown = false;
+  private readonly executor = new ChannelExecutor(channelRegistry);
   private readonly logger = new Logger('DeliveryWorker');
   constructor(
     private readonly db: DatabaseService,
@@ -49,6 +44,7 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
     this.shuttingDown = true;
     if (this.timer) clearInterval(this.timer);
     await this.worker?.close();
+    await this.executor.close();
     await this.queue.close();
   }
   private async tick() {
@@ -131,11 +127,12 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
       { jobId: `d-${id}-g-${generation}`, delay: Math.max(0, at.getTime() - Date.now()) },
     );
   }
-  private async quota(channelId: string, type: string) {
-    const capacity = type === 'feishu.group_webhook' ? 60 : 20;
+  private async quota(channelId: string, capacity: number, intervalMs: number) {
     const script =
-      "local t=redis.call('TIME'); local now=t[1]*1000+t[2]/1000; local v=redis.call('HMGET',KEYS[1],'tokens','time'); local tokens=tonumber(v[1]) or tonumber(ARGV[1]); local last=tonumber(v[2]) or now; tokens=math.min(tonumber(ARGV[1]),tokens+math.max(0,now-last)*tonumber(ARGV[1])/60000); local wait=0; if tokens>=1 then tokens=tokens-1 else wait=math.ceil((1-tokens)*60000/tonumber(ARGV[1])) end; redis.call('HSET',KEYS[1],'tokens',tokens,'time',now); redis.call('PEXPIRE',KEYS[1],120000); return wait";
-    return Number(await this.redis.client.eval(script, 1, `channel-quota:${channelId}`, capacity));
+      "local t=redis.call('TIME'); local now=t[1]*1000+t[2]/1000; local v=redis.call('HMGET',KEYS[1],'tokens','time'); local tokens=tonumber(v[1]) or tonumber(ARGV[1]); local last=tonumber(v[2]) or now; local window=tonumber(ARGV[2]); tokens=math.min(tonumber(ARGV[1]),tokens+math.max(0,now-last)*tonumber(ARGV[1])/window); local wait=0; if tokens>=1 then tokens=tokens-1 else wait=math.ceil((1-tokens)*window/tonumber(ARGV[1])) end; redis.call('HSET',KEYS[1],'tokens',tokens,'time',now); redis.call('PEXPIRE',KEYS[1],window*2); return wait";
+    return Number(
+      await this.redis.client.eval(script, 1, `channel-quota:${channelId}`, capacity, intervalMs),
+    );
   }
   private async process(job: SendJob) {
     if (this.shuttingDown) return;
@@ -163,7 +160,31 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
       });
       return;
     }
-    const wait = await this.quota(d.channelId, channel.type);
+    let descriptor;
+    try {
+      descriptor = channelRegistry.get(d.pluginId, d.pluginVersion).descriptor;
+      if (
+        channel.type !== d.pluginId ||
+        channel.configVersion !== d.configVersion ||
+        descriptor.configVersion !== d.configVersion
+      )
+        throw new Error('Plugin configuration mismatch');
+    } catch {
+      await this.db.delivery.updateMany({
+        where: { id: d.id, generation: job.generation, status: { in: ['pending', 'retry_wait'] } },
+        data: {
+          status: 'failed',
+          lastCode: 'plugin_unavailable',
+          lastMessage: '投递绑定的插件或配置版本不可用',
+        },
+      });
+      return;
+    }
+    const wait = await this.quota(
+      d.channelId,
+      descriptor.rateLimit.capacity,
+      descriptor.rateLimit.intervalMs,
+    );
     if (wait > 0) {
       await this.db.$transaction(async (tx) => {
         const changed = await tx.delivery.updateMany({
@@ -205,10 +226,13 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
     let started = false;
     let outcome: SendOutcome;
     try {
-      outcome = await sendMessage({
-        type: channel.type as ChannelType,
-        credentials: this.secrets.decrypt<ChannelCredentials>(channel.credentials),
-        target: d.targetSnapshot as TargetConfig,
+      outcome = await this.executor.execute({
+        channelId: channel.id,
+        pluginId: d.pluginId,
+        pluginVersion: d.pluginVersion,
+        configVersion: d.configVersion,
+        credentials: this.secrets.decrypt<ConfigValues>(channel.credentials),
+        target: d.targetSnapshot as ConfigValues,
         text: d.text,
         timeoutMs: Number(process.env.MSGDOCK_SEND_TIMEOUT_MS ?? 10000),
         beforeRequest: async () => {

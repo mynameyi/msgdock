@@ -82,7 +82,7 @@ async function main() {
     app,
     new DocumentBuilder()
       .setTitle('MsgDock API')
-      .setVersion('0.1.0')
+      .setVersion('0.2.0')
       .addBearerAuth({
         type: 'http',
         scheme: 'bearer',

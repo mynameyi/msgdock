@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
-import { ChannelCredentials, ChannelType } from '@msgdock/contracts';
-import { validateCredentials } from '@msgdock/channels';
+import { ConfigValues } from '@msgdock/plugin-sdk';
+import { channelRegistry } from '@msgdock/channels';
 import { Prisma } from '@msgdock/database';
 import { SecretService, randomSecret, sha256 } from '../../infrastructure';
 import { ConfigurationRepository } from './configuration.repository';
@@ -15,8 +15,10 @@ export interface ApplicationInput {
 }
 export interface ChannelInput {
   name: string;
-  type: ChannelType;
-  credentials: ChannelCredentials;
+  type: string;
+  pluginVersion?: string;
+  credentials: ConfigValues;
+  targetConfig?: ConfigValues;
   enabled: boolean;
   targetName: string;
   openConversationId?: string;
@@ -91,6 +93,8 @@ export class ConfigurationService {
         id: true,
         name: true,
         type: true,
+        pluginVersion: true,
+        configVersion: true,
         enabled: true,
         lastStatus: true,
         lastCheckedAt: true,
@@ -99,30 +103,43 @@ export class ConfigurationService {
       },
     });
   }
+  plugins() {
+    return channelRegistry.list();
+  }
   async saveChannel(input: ChannelInput, actor: string, id?: string) {
     let credentials = input.credentials;
+    let pluginVersion = input.pluginVersion;
     if (id) {
       const old = await this.db.channel.findUnique({ where: { id } });
       if (!old) throw new NotFoundException('渠道不存在');
       if (old.type !== input.type) throw new BadRequestException('已有渠道不能修改类型');
+      if (pluginVersion && old.pluginVersion !== pluginVersion)
+        throw new BadRequestException('已有渠道不能直接切换插件版本；请创建新渠道并排空旧任务');
+      pluginVersion = old.pluginVersion;
       credentials = {
-        ...this.secrets.decrypt<ChannelCredentials>(old.credentials),
+        ...this.secrets.decrypt<ConfigValues>(old.credentials),
         ...Object.fromEntries(
           Object.entries(input.credentials).filter(([, v]) => v !== '' && v !== undefined),
         ),
       };
     }
+    // Backward-compatible alias for 0.1.0 clients; no platform-specific validation here.
+    const targetConfig =
+      input.targetConfig ??
+      (input.openConversationId ? { openConversationId: input.openConversationId } : {});
+    let plugin;
     try {
-      validateCredentials(input.type, credentials);
+      plugin = channelRegistry.get(input.type, pluginVersion);
+      channelRegistry.validate(input.type, plugin.descriptor.version, credentials, targetConfig);
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
-    if (input.type === 'dingtalk.enterprise_bot' && !input.openConversationId)
-      throw new BadRequestException('钉钉需要目标 OpenConversationId');
     const result = await this.db.$transaction(async (tx) => {
       const data = {
         name: input.name,
         type: input.type,
+        pluginVersion: plugin.descriptor.version,
+        configVersion: plugin.descriptor.configVersion,
         enabled: input.enabled,
         credentials: this.secrets.encrypt(credentials),
       };
@@ -132,9 +149,7 @@ export class ConfigurationService {
       const target = await tx.target.findFirst({ where: { channelId: channel.id } });
       const targetData = {
         name: input.targetName,
-        config: {
-          ...(input.openConversationId ? { openConversationId: input.openConversationId } : {}),
-        },
+        config: targetConfig as Prisma.InputJsonValue,
       };
       if (target) await tx.target.update({ where: { id: target.id }, data: targetData });
       else await tx.target.create({ data: { ...targetData, channelId: channel.id } });
@@ -143,7 +158,11 @@ export class ConfigurationService {
           actor,
           action: 'channel.save',
           resource: channel.id,
-          details: { type: input.type, enabled: input.enabled },
+          details: {
+            type: input.type,
+            pluginVersion: plugin.descriptor.version,
+            enabled: input.enabled,
+          },
         },
       });
       return { id: channel.id };

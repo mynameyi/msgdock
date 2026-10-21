@@ -319,6 +319,25 @@
         ]
       }
     },
+    "/api/admin/channel-plugins": {
+      "get": {
+        "operationId": "ConfigurationController_plugins",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "配置"
+        ]
+      }
+    },
     "/api/admin/channels/{id}": {
       "put": {
         "operationId": "ConfigurationController_updateChannel",
@@ -1007,7 +1026,7 @@
   "info": {
     "title": "MsgDock API",
     "description": "",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "contact": {}
   },
   "tags": [],
@@ -1126,26 +1145,6 @@
           "perMinuteLimit"
         ]
       },
-      "CredentialsDto": {
-        "type": "object",
-        "properties": {
-          "webhookUrl": {
-            "type": "string"
-          },
-          "secret": {
-            "type": "string"
-          },
-          "appKey": {
-            "type": "string"
-          },
-          "appSecret": {
-            "type": "string"
-          },
-          "robotCode": {
-            "type": "string"
-          }
-        }
-      },
       "ChannelDto": {
         "type": "object",
         "properties": {
@@ -1154,14 +1153,21 @@
           },
           "type": {
             "type": "string",
-            "enum": [
-              "wecom.group_webhook",
-              "feishu.group_webhook",
-              "dingtalk.enterprise_bot"
-            ]
+            "description": "已注册渠道插件的稳定 ID，通过 channel-plugins 查询"
+          },
+          "pluginVersion": {
+            "type": "string",
+            "description": "新渠道默认使用当前插件版本；已有渠道不可直接切换"
           },
           "credentials": {
-            "$ref": "#/components/schemas/CredentialsDto"
+            "type": "object",
+            "additionalProperties": true,
+            "description": "按插件 configSchema 校验；整体加密保存，永不回传"
+          },
+          "targetConfig": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "按插件 targetSchema 校验"
           },
           "enabled": {
             "type": "boolean",
@@ -1171,7 +1177,9 @@
             "type": "string"
           },
           "openConversationId": {
-            "type": "string"
+            "type": "string",
+            "deprecated": true,
+            "description": "0.1.0 兼容字段；新客户端使用 targetConfig"
           }
         },
         "required": [

@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/channel-plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ConfigurationController_plugins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/channels/{id}": {
         parameters: {
             query?: never;
@@ -520,21 +536,27 @@ export interface components {
             /** @default 60 */
             perMinuteLimit: number;
         };
-        CredentialsDto: {
-            webhookUrl?: string;
-            secret?: string;
-            appKey?: string;
-            appSecret?: string;
-            robotCode?: string;
-        };
         ChannelDto: {
             name: string;
-            /** @enum {string} */
-            type: "wecom.group_webhook" | "feishu.group_webhook" | "dingtalk.enterprise_bot";
-            credentials: components["schemas"]["CredentialsDto"];
+            /** @description 已注册渠道插件的稳定 ID，通过 channel-plugins 查询 */
+            type: string;
+            /** @description 新渠道默认使用当前插件版本；已有渠道不可直接切换 */
+            pluginVersion?: string;
+            /** @description 按插件 configSchema 校验；整体加密保存，永不回传 */
+            credentials: {
+                [key: string]: unknown;
+            };
+            /** @description 按插件 targetSchema 校验 */
+            targetConfig?: {
+                [key: string]: unknown;
+            };
             /** @default true */
             enabled: boolean;
             targetName: string;
+            /**
+             * @deprecated
+             * @description 0.1.0 兼容字段；新客户端使用 targetConfig
+             */
             openConversationId?: string;
         };
         TopicDto: {
@@ -834,6 +856,23 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ConfigurationController_plugins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

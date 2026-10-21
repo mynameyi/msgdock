@@ -48,6 +48,9 @@ export class ConfigurationController {
   @Get('channels') channels() {
     return this.service.channels();
   }
+  @Get('channel-plugins') plugins() {
+    return this.service.plugins();
+  }
   @Post('channels') createChannel(@Body() body: ChannelDto, @Req() req: AdminRequest) {
     return this.service.saveChannel(body, req.admin.username);
   }

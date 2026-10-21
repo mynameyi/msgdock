@@ -83,7 +83,7 @@ export function IdentityPage({
             {needsSetup ? '创建管理员并进入控制台' : '登录'}
           </Button>
         </Form>
-        <div className="identity-foot">自托管 · AGPL-3.0-only · v0.1.0</div>
+        <div className="identity-foot">自托管 · AGPL-3.0-only · v0.2.0</div>
       </section>
     </div>
   );

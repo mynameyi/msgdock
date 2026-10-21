@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@msgdock/database';
+import { channelRegistry } from '@msgdock/channels';
 import { DatabaseService } from '../../infrastructure';
 
 @Injectable()
@@ -81,6 +82,17 @@ export class DeliveriesService {
         include: { channel: true },
       });
       if (!target?.channel.enabled) throw new BadRequestException('目标渠道已停用');
+      try {
+        const descriptor = channelRegistry.get(source.pluginId, source.pluginVersion).descriptor;
+        if (
+          target.channel.type !== source.pluginId ||
+          target.channel.configVersion !== source.configVersion ||
+          descriptor.configVersion !== source.configVersion
+        )
+          throw new Error('插件配置版本不兼容');
+      } catch {
+        throw new BadRequestException('原投递的插件版本不可用；请使用当前渠道重新创建通知');
+      }
       const fresh = await tx.delivery.create({
         data: {
           notificationId: source.notificationId,
@@ -88,6 +100,9 @@ export class DeliveriesService {
           targetId: source.targetId,
           targetName: source.targetName,
           targetSnapshot: source.targetSnapshot as Prisma.InputJsonValue,
+          pluginId: source.pluginId,
+          pluginVersion: source.pluginVersion,
+          configVersion: source.configVersion,
           text: source.text,
           expiresAt: new Date(Date.now() + 3600000),
           replayOfDeliveryId: id,

@@ -206,6 +206,16 @@ export function DeliveriesPage() {
                     children: <StatusTag status={detail.data.status} />,
                   },
                   { key: 'target', label: '目标', children: detail.data.targetName },
+                  {
+                    key: 'plugin',
+                    label: '执行插件',
+                    children: `${detail.data.pluginId}@${detail.data.pluginVersion}`,
+                  },
+                  {
+                    key: 'config-version',
+                    label: '配置结构版本',
+                    children: detail.data.configVersion,
+                  },
                   { key: 'error', label: '处理结果', children: detail.data.lastMessage ?? '—' },
                   { key: 'code', label: '结果代码', children: detail.data.lastCode ?? '—' },
                   {

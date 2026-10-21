@@ -63,6 +63,40 @@ const identity = await request(bootstrap.needsSetup ? '/api/admin/setup' : '/api
 expectStatus(identity, 201);
 cookie = identity.response.headers.get('set-cookie').split(';')[0];
 csrf = identity.data.csrfToken;
+const plugins = expectStatus(await request('/api/admin/channel-plugins'), 200);
+assert.equal(plugins.filter((p) => !p.testOnly).length, 3);
+assert(plugins.every((p) => p.sdkApiVersion === 1 && p.configVersion === 1));
+assert(
+  plugins
+    .find((p) => p.id === 'dingtalk.enterprise_bot')
+    .targetSchema.required.includes('openConversationId'),
+);
+assert(!JSON.stringify(plugins).includes('accessToken'));
+checks += 4;
+for (const body of [
+  { type: 'not.installed', credentials: {}, targetConfig: {} },
+  { type: 'wecom.group_webhook', pluginVersion: '99.0.0', credentials: {}, targetConfig: {} },
+  {
+    type: 'dingtalk.enterprise_bot',
+    credentials: { appKey: 'x', appSecret: 'x', robotCode: 'x' },
+    targetConfig: {},
+  },
+  {
+    type: 'wecom.group_webhook',
+    credentials: {
+      webhookUrl: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=fixture',
+      extra: 'secret-fixture',
+    },
+    targetConfig: {},
+  },
+])
+  expectStatus(
+    await request('/api/admin/channels', {
+      method: 'POST',
+      body: { name: '插件校验', enabled: true, targetName: '无发送校验目标', ...body },
+    }),
+    400,
+  );
 expectStatus(
   await request('/api/admin/applications', {
     method: 'POST',
@@ -98,10 +132,16 @@ const channel = await admin('/channels', {
   targetName: '测试接收目标',
   enabled: true,
   credentials: {},
+  pluginVersion: '1.0.0',
+  targetConfig: {},
 });
 const channels = expectStatus(await request('/api/admin/channels'), 200);
 assert(!JSON.stringify(channels).includes('credentials'));
 checks++;
+const savedChannel = channels.find((c) => c.id === channel.id);
+assert.equal(savedChannel.pluginVersion, '1.0.0');
+assert.equal(savedChannel.configVersion, 1);
+checks += 2;
 const target = expectStatus(await request('/api/admin/targets'), 200).find(
   (t) => t.channelId === channel.id,
 );
@@ -274,6 +314,10 @@ const snapshot = expectStatus(
   200,
 );
 assert.equal(snapshot.text, '订单 NO-001：299');
+assert.equal(snapshot.pluginId, 'mock');
+assert.equal(snapshot.pluginVersion, '1.0.0');
+assert.equal(snapshot.configVersion, 1);
+checks += 3;
 checks++;
 await admin(`/applications/${app.id}`, { ...appBody, authMode: 'none' }, 'PUT');
 expectStatus(
@@ -357,6 +401,8 @@ console.log(
       'API key revoke',
       'credential redaction',
       'overview and worker heartbeat',
+      'plugin catalog and schema validation',
+      'pinned plugin and configuration versions',
     ],
   }),
 );
