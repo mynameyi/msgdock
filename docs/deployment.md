@@ -12,9 +12,9 @@ docker exec msgdock cat /data/secrets/setup-token
 
 打开 <http://localhost:3300> 是公开产品首页。进入 <http://localhost:3300/console>，输入初始化令牌并创建管理员，密码至少 12 位。没有通用默认密码。首次管理员创建后，初始化接口关闭；登录后可在系统设置修改密码。
 
-公开开发文档位于 `/docs`，其中 `/docs/swagger` 提供 Swagger UI 调试，`/docs/redoc` 提供 ReDoc 阅读视图，`/docs/plugins` 提供插件开发指南。这些页面无需登录，不读取实例的应用、目标、密钥或运行状态。`/openapi.json` 只提供通知 API 的公开契约。页面、渲染器和样式均随镜像提供，无需额外文档容器或 CDN。
+公开开发文档位于 `/docs`，其中 `/docs/swagger` 提供 Swagger UI 调试，`/docs/redoc` 提供 ReDoc 阅读视图，`/docs/plugins` 提供插件开发指南。这些页面无需登录，不读取实例的渠道、密钥或运行状态。`/openapi.json` 只提供通知 API 的公开契约。页面、渲染器和样式均随镜像提供，无需额外文档容器或 CDN。
 
-反向代理需同时转发 `/`、`/docs/*`、`/console/*`、`/assets/*`、`/openapi.json` 与 `/api/*` 到本容器，保留原始路径。旧后台地址如 `/channels` 会由前端兼容跳转至 `/console/channels`。公开页面不改变管理接口的认证与 CSRF 规则，API Key 权限也保持原有应用范围。
+反向代理需同时转发 `/`、`/docs/*`、`/console/*`、`/assets/*`、`/openapi.json` 与 `/api/*` 到本容器，保留原始路径。旧后台地址如 `/channels` 会由前端兼容跳转至 `/console/channels`。公开页面不改变管理接口的认证与 CSRF 规则，所有有效 API Key 仅授权通知接口，管理接口仍需管理员会话。
 
 仓库中的 `compose.yaml` 是同一部署方式的单服务示例：
 
@@ -46,14 +46,14 @@ docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build
 ## 接入与鉴权
 
 1. 添加企业微信群机器人、飞书群机器人或钉钉企业机器人。每个渠道创建一个注册目标，列表中的“渠道 ID”支持复制并可直接填入通知 API 的 target.ids；钉钉另需填写群的 OpenConversationId。
-2. 创建接入应用，选择可发送的目标，鉴权默认开启。
-3. 为应用生成 API Key；完整值只显示一次。业务服务端使用 `Authorization: Bearer <API_KEY>` 请求头。
-4. 需要非鉴权发送时，在该应用中显式选择“非鉴权发送”。无效 Key 不会自动降级；后台管理与结果查询始终认证。
-5. 使用测试发送检查配置，再从接口文档复制完整请求示例。所有业务发送都要求 JSON 的 idempotency_key；同一业务重试复用原值。API Key 仍在 Authorization 请求头中。
+2. 系统鉴权默认开启，在“API Key”页面创建一个独立 Key，只需填写名称。
+3. Key 列表支持完整查看和复制；旧版本仅存摘要的 Key 会提示无法还原。业务服务端使用 `Authorization: Bearer <API_KEY>` 请求头。
+4. 需要免 Key 调用时，在“系统设置 → 通知 API 鉴权”关闭开关。发送和查询都可不带 Key；携带无效 Key 仍会被拒绝。后台管理员登录不受影响。
+5. 使用测试发送检查配置，再从接口文档复制请求示例。JSON 的 idempotency_key 为可选字段：不传时每次发送，需防止重复通知时提供，并在同一业务重试时复用原值。API Key 仍在 Authorization 请求头中。
 
 业务和管理接口统一返回 code/message/data/request_id，业务结果从 data 读取。HTTP 202 表示持久化受理，查询 HTTP 200 / code=OK 与投递成功相互独立。具体约定见[响应与错误码](api-contract.md)，公开页面为 `/docs/responses`。升级时同步更新调用方：旧 Idempotency-Key 头不再提供幂等参数；投递原因从 error 读取。保留已有数据卷和主密钥。
 
-企业微信与飞书仅接受对应官方 HTTPS Webhook URL；钉钉使用固定官方 OpenAPI 端点。应用调用方不能提交任意外部地址。
+企业微信与飞书仅接受对应官方 HTTPS Webhook URL；钉钉使用固定官方 OpenAPI 端点。通知调用方不能提交任意外部地址。
 
 ## 插件与版本升级
 
@@ -63,11 +63,13 @@ docker build --build-arg ALPINE_MIRROR=https://mirrors.aliyun.com/alpine --build
 
 从 0.1.0 升级时，启动迁移会为现有渠道补充插件版本 1.0.0 / 配置结构版本 1，并从原渠道类型回填历史投递的插件 ID。凭证密文、会话和 API Key 保留，旧任务继续绑定原版本。升级前备份数据库和原密钥；验证渠道、历史任务和队列恢复后再接入新流量。
 
-渠道短 ID 迁移 `202610210002_channel_short_ids` 会为已有渠道自动分配 `ch_` 加 12 位小写十六进制字符的唯一 ID，并设置新渠道的生成规则。数据库内部的渠道和目标 UUID、应用授权、主题路由、历史投递与密钥保持不变。API、Worker 及 Prisma Client 需由新镜像一并更新；容器启动时先完成迁移。通知 API 的 target.ids 及控制台测试发送仅接受渠道短 ID，调用方应从渠道列表复制 ID，UUID 请求返回参数校验错误。
+渠道短 ID 迁移 `202610210002_channel_short_ids` 会为已有渠道自动分配 `ch_` 加 12 位小写十六进制字符的唯一 ID，并设置新渠道的生成规则。数据库内部的渠道和目标 UUID、主题路由、历史投递与密钥保持不变。API、Worker 及 Prisma Client 需由新镜像一并更新；容器启动时先完成迁移。通知 API 的 target.ids 及控制台测试发送仅接受渠道短 ID，调用方应从渠道列表复制 ID，UUID 请求返回参数校验错误。
 
-已有渠道不能直接改插件 ID 或版本。升级采用新建渠道、重新授权和调整主题路由、排空旧任务、停用旧渠道的流程。移除内置插件前检查所有关联渠道和待执行任务；缺失的原版本不会静默换成当前版本，任务会明确失败。注册表支持同时保留多个版本，便于旧任务排空。
+已有渠道不能直接改插件 ID 或版本。升级采用新建渠道、调整主题路由、排空旧任务、停用旧渠道的流程。移除内置插件前检查所有关联渠道和待执行任务；缺失的原版本不会静默换成当前版本，任务会明确失败。注册表支持同时保留多个版本，便于旧任务排空。
 
 移除 `event` 的迁移 `202610210003_remove_notification_event` 会删除 `Notification.event` 列，请求、查询响应和控制台不再使用事件类型。升级前备份数据库；其他通知字段、投递、渠道及授权保持不变。旧幂等记录继续保留，摘要不匹配时仍返回 409，详见[响应规范](api-contract.md)。
+
+独立 API Key 迁移 `202610210004_global_api_keys` 会保留已有 Key 摘要与历史消息，移除接入应用模型，并统一默认开启系统鉴权。调用路径不再包含应用标识。完整迁移规则见[API Key 与系统鉴权](api-authentication.md)。
 
 ## HTTPS 与访问地址
 
@@ -85,7 +87,7 @@ docker restart --timeout 90 msgdock
 
 PostgreSQL 保存通知、计划、幂等与发送证据；Redis 队列丢失后按数据库中待执行计划补回。sending 租约失效且请求可能已经开始时标为 unknown，不直接重发。平台超时也标为 unknown；通过界面核实结果或明确确认风险后创建关联重发，原记录保留。
 
-Redis 不可用时暂停执行，MVP 也会拒绝依赖 Redis 限额校验的新受理请求；客户端可在恢复后使用同一幂等键重试。当前固定 60 秒投递租约，单次 HTTP 超时默认 10 秒，最多 6 次真实发送尝试。
+Redis 不可用时暂停执行，MVP 也会拒绝依赖 Redis 限额校验的新受理请求；客户端可在恢复后重试，已提供幂等键时复用原值。当前固定 60 秒投递租约，单次 HTTP 超时默认 10 秒，最多 6 次真实发送尝试。
 
 ## 备份与升级
 

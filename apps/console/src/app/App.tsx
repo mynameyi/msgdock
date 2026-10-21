@@ -13,7 +13,7 @@ import {
 import zhCN from 'antd/locale/zh_CN';
 import {
   ApiOutlined,
-  AppstoreOutlined,
+  KeyOutlined,
   BookOutlined,
   BranchesOutlined,
   DashboardOutlined,
@@ -40,9 +40,9 @@ import { LandingPage } from '../features/public/LandingPage';
 const OverviewPage = lazy(() =>
   import('../features/overview/OverviewPage').then((m) => ({ default: m.OverviewPage })),
 );
-const ApplicationsPage = lazy(() =>
-  import('../features/applications/ApplicationsPage').then((m) => ({
-    default: m.ApplicationsPage,
+const ApiKeysPage = lazy(() =>
+  import('../features/api-keys/ApiKeysPage').then((m) => ({
+    default: m.ApiKeysPage,
   })),
 );
 const ChannelsPage = lazy(() =>
@@ -81,7 +81,7 @@ const navigation = [
   { key: '/console/channels', label: '渠道管理', icon: <ApiOutlined /> },
   { key: '/console/templates', label: '消息模板', icon: <FileTextOutlined /> },
   { key: '/console/routing', label: '主题路由', icon: <BranchesOutlined /> },
-  { key: '/console/applications', label: '接入应用', icon: <AppstoreOutlined /> },
+  { key: '/console/api-keys', label: 'API Key', icon: <KeyOutlined /> },
 ];
 const lowerNavigation = [
   { key: '/console/settings', label: '系统设置', icon: <SettingOutlined /> },
@@ -193,7 +193,7 @@ function Shell({ session, onLogout }: { session: Session; onLogout: () => void }
               <Route path="channels" element={<ChannelsPage />} />
               <Route path="templates" element={<TemplatesPage />} />
               <Route path="routing" element={<RoutingPage />} />
-              <Route path="applications" element={<ApplicationsPage />} />
+              <Route path="api-keys" element={<ApiKeysPage />} />
               <Route path="settings" element={<SystemPage />} />
               <Route path="*" element={<Navigate to="/console" replace />} />
             </Routes>
@@ -309,7 +309,7 @@ export function App() {
                   <Route path="*" element={<PublicNotFound />} />
                 </Route>
                 <Route path="console/*" element={<Gate />} />
-                {['deliveries', 'channels', 'templates', 'routing', 'applications', 'settings'].map(
+                {['deliveries', 'channels', 'templates', 'routing', 'api-keys', 'settings'].map(
                   (path) => (
                     <Route key={path} path={path} element={<LegacyConsoleRedirect />} />
                   ),

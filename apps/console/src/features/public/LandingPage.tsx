@@ -38,10 +38,10 @@ const features = [
 ];
 export function LandingPage() {
   const snippet = [
-    `curl -X POST '${location.origin}/api/v1/apps/<APP_KEY>/notifications'`,
+    `curl -X POST '${location.origin}/api/v1/notifications'`,
     "  -H 'Authorization: Bearer <API_KEY>'",
     "  -H 'Content-Type: application/json'",
-    `  -d '${JSON.stringify({ idempotency_key: '<UNIQUE_EVENT_ID>', target: { type: 'topic', key: 'finance' }, message: { text: '订单支付成功。' } }, null, 2)}'`,
+    `  -d '${JSON.stringify({ target: { type: 'topic', key: 'finance' }, message: { text: '订单支付成功。' } }, null, 2)}'`,
   ].join(' \\\n');
   return (
     <>
@@ -156,7 +156,8 @@ export function LandingPage() {
           <span className="section-kicker">开发者友好</span>
           <h2 id="code-title">从一条 HTTP 请求开始</h2>
           <p>
-            配置渠道和应用后，使用 API Key 从业务服务端发送通知。现有系统无需引入各个平台的 SDK。
+            配置渠道后，使用 API Key 从业务服务端发送通知；关闭系统鉴权时可省略
+            Key。现有系统无需引入各个平台的 SDK。
           </p>
           <ul>
             <li>

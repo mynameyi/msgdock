@@ -4,7 +4,7 @@
 
 MsgDock 是面向 Web 系统的开源多渠道 IM 消息推送引擎，旨在通过统一 API、渠道适配器和可靠的异步投递机制，将业务通知发送到微信、钉钉、飞书和企业微信等平台。
 
-> 当前版本：**0.2.0 渠道插件化**。已实现管理控制台、应用鉴权、通知投递与可信内置插件，提供一个 Docker 镜像、一个容器的部署方式。真实 IM 平台仍需要配置已授权的机器人凭证；模拟平台验证不代表已完成真实企业环境联调。
+> 当前版本：**0.2.0 渠道插件化**。已实现管理控制台、独立 API Key 鉴权、通知投递与可信内置插件，提供一个 Docker 镜像、一个容器的部署方式。真实 IM 平台仍需要配置已授权的机器人凭证；模拟平台验证不代表已完成真实企业环境联调。
 
 渠道列表提供可复制的唯一短 ID（如 `ch_a7c92e4f6b18`），通知 API 的 `target.ids` 仅接受此格式。ID 在重命名后保持不变，已有渠道在启动迁移时自动补齐。
 
@@ -20,11 +20,11 @@ docker exec msgdock cat /data/secrets/setup-token
 
 打开 <http://localhost:3300> 查看公开产品首页；进入 <http://localhost:3300/console>，使用初始化令牌创建管理员。也可以执行 `docker compose up --build -d`，同样只会启动一个容器。内置 PostgreSQL、Redis、API、Worker 和控制台；所有业务数据与加密密钥保存在 `/data` 持久化卷中。
 
-进入控制台后按“添加渠道 → 创建应用并授权目标 → 生成 API Key → 发送测试”的顺序接入。API Key 通过 `Authorization: Bearer <API_KEY>` 传递。新应用默认鉴权；显式选择非鉴权后只开放该应用的发送入口。
+进入控制台后按“添加渠道 → 创建 API Key（开启鉴权时）→ 发送测试”的顺序接入。API Key 通过 `Authorization: Bearer <API_KEY>` 传递。系统默认开启鉴权；在系统设置中关闭后，无需 Key 即可发送和查询。无需创建应用或提交 clientId。
 
 [部署、升级与备份](docs/deployment.md) · [0.2.0 版本说明](docs/releases/v0.2.0.md) · [渠道插件开发](docs/channel-plugins.md) · [OpenAPI 契约](docs/openapi.json)
 
-发送通知时，将幂等键放在 JSON 的 `idempotency_key` 字段。API 统一返回 `code/message/data/request_id`，业务结果从 `data` 读取；接口调用结果与异步投递结果分别表达。旧客户端需同步升级，详见[响应规范与错误码](docs/api-contract.md)。
+普通推送只需提供目标与消息内容；需要去重时，可在 JSON 中增加可选的 `idempotency_key`，重试复用原值。不传时每次请求都会创建新通知。API 统一返回 `code/message/data/request_id`，业务结果从 `data` 读取；接口调用结果与异步投递结果分别表达，详见[响应规范与错误码](docs/api-contract.md)。
 
 ## 设计文档
 
@@ -38,7 +38,7 @@ docker exec msgdock cat /data/secrets/setup-token
 | --- | --- | --- |
 | `/` | 产品介绍、渠道能力与接入入口 | 公开 |
 | `/docs` | API 快速接入 | 公开 |
-| `/docs/swagger` | Swagger UI 在线调试 | 页面公开；调用接口按应用规则鉴权 |
+| `/docs/swagger` | Swagger UI 在线调试 | 页面公开；调用接口按系统鉴权开关校验 Key |
 | `/docs/redoc` | ReDoc 接口参考 | 公开 |
 | `/docs/responses` | 统一响应、错误码与升级说明 | 公开 |
 | `/docs/plugins` | 渠道插件开发约定 | 公开 |
@@ -51,7 +51,7 @@ Swagger UI 与 ReDoc 共用服务端生成的公开契约，依赖资源随镜�
 
 - **统一接入**：业务系统通过统一 HTTP API 提交通知。
 - **部署简单**：默认一个 Docker 镜像、一个容器，内置前后端、Worker、PostgreSQL 和 Redis。
-- **可选鉴权**：发送接口默认采用 `Authorization: Bearer <API_KEY>`；支持按应用显式开启非鉴权发送。
+- **可选鉴权**：发送接口默认采用 `Authorization: Bearer <API_KEY>`；支持在系统设置中统一关闭鉴权。控制台可查看、复制完整 API Key。
 - **多渠道适配**：按平台及接入方式分别实现群机器人、应用消息与智能机器人适配器。
 - **可靠投递**：持久化任务，支持幂等、限流、重试、消息过期与投递状态查询。
 - **灵活配置**：集中管理渠道实例、接收目标、订阅主题和消息模板。
@@ -80,7 +80,7 @@ Swagger UI 与 ReDoc 共用服务端生成的公开契约，依赖资源随镜�
 ## 开发路线
 
 - [x] 确定首版范围、技术栈与 API 契约。
-- [x] 实现应用鉴权、渠道实例与不可变模板版本。
+- [x] 实现 API Key 鉴权、渠道实例与不可变模板版本。
 - [x] 实现首批文本适配器与测试发送流程；真实平台联调待配置凭证后完成。
 - [x] 实现持久化投递、并发幂等、实例限流、受控重试与状态查询。
 - [x] 增加管理控制台、投递记录、操作审计与单容器部署。
@@ -110,3 +110,5 @@ Copyright (C) 2026 MsgDock contributors.
 允许商业使用和二次开发。分发受许可证覆盖的衍生版本时，须按 AGPLv3 提供对应源码并遵守相同许可要求；若修改本项目后通过网络提供服务，须向与该修改版远程交互的用户提供获取对应源码的机会。仅在私下修改自用、不分发且不向其他用户提供网络交互服务，并不要求将修改公开发布。
 
 以上为便于理解的简要说明，具体权利和义务以许可证正文为准。
+
+鉴权模型与旧版本迁移详见 [API Key 与系统鉴权](docs/api-authentication.md)。

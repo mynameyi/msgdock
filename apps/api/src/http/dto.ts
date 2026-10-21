@@ -19,6 +19,7 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 export class LoginDto {
   @ApiProperty() @IsString() @Matches(/^[a-zA-Z0-9_.-]{3,40}$/) username!: string;
@@ -31,19 +32,12 @@ export class PasswordDto {
   @ApiProperty({ format: 'password' }) @IsString() @Length(12, 128) oldPassword!: string;
   @ApiProperty({ format: 'password' }) @IsString() @Length(12, 128) newPassword!: string;
 }
-export class ApplicationDto {
-  @ApiProperty() @IsString() @Length(1, 80) name!: string;
-  @ApiProperty() @IsString() @Matches(/^[a-z][a-z0-9-]{2,49}$/) key!: string;
-  @ApiProperty({ enum: ['api_key', 'none'], default: 'api_key' })
-  @IsIn(['api_key', 'none'])
-  authMode: 'api_key' | 'none' = 'api_key';
+export class ApiKeyDto {
+  @ApiProperty() @IsString() @Length(1, 80) @Matches(/\S/) name!: string;
   @ApiProperty({ default: true }) @IsBoolean() enabled: boolean = true;
-  @ApiProperty({ type: [String] })
-  @IsArray()
-  @ArrayUnique()
-  @ArrayMaxSize(500)
-  @IsUUID('4', { each: true })
-  allowedTargetIds: string[] = [];
+}
+export class ApiSettingsDto {
+  @ApiProperty({ default: true }) @IsBoolean() authEnabled: boolean = true;
   @ApiProperty({ default: 60 }) @IsInt() @Min(1) @Max(10000) perMinuteLimit: number = 60;
 }
 export class ChannelDto {
@@ -112,7 +106,7 @@ export class TargetDto {
   @ApiProperty({
     enum: ['targets', 'topic'],
     example: 'targets',
-    description: 'targets 使用 ids；topic 使用 key。所有目标需在应用授权范围内。',
+    description: 'targets 使用 ids；topic 使用 key。目标必须对应已启用的渠道。',
   })
   @IsIn(['targets', 'topic'])
   type!: 'targets' | 'topic';
@@ -148,16 +142,18 @@ export class TemplateRefDto {
   @ApiProperty() @IsString() @MaxLength(50) key!: string;
 }
 export class NotificationDto {
-  @ApiProperty({
-    description: '应用内唯一的业务通知标识。同一请求重试复用原值；新通知使用新值。',
+  @ApiPropertyOptional({
+    description:
+      '可选的业务通知标识，在同一 API Key 下去重；匿名请求共用匿名范围。省略时每次请求创建新通知；提供时同一请求重试复用原值。',
     example: 'order-paid-20261021-001',
     minLength: 1,
     maxLength: 200,
     pattern: '^[\\x21-\\x7E]{1,200}$',
   })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
   @Matches(/^[\x21-\x7E]{1,200}$/)
-  idempotency_key!: string;
+  idempotency_key?: string;
   @ApiProperty({ type: TargetDto })
   @IsDefined()
   @ValidateNested()
@@ -196,7 +192,6 @@ export class NotificationDto {
   expires_in?: number;
 }
 export class TestSendDto {
-  @ApiProperty() @IsUUID('4') applicationId!: string;
   @ApiProperty({
     type: [String],
     description: '渠道列表中的渠道短 ID',

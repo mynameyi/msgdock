@@ -24,3 +24,9 @@ export const getAudit = async () =>
       createdAt: string;
     }[]
   >(await client.GET('/api/admin/audit'));
+
+export type ApiSettings = { authEnabled: boolean; perMinuteLimit: number };
+export const getApiSettings = async () =>
+  unwrap<ApiSettings>(await client.GET('/api/admin/api-settings'));
+export const saveApiSettings = async (body: ApiSettings) =>
+  unwrap<ApiSettings>(await client.PUT('/api/admin/api-settings', { body }));

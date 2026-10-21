@@ -115,11 +115,18 @@ export function DeliveriesPage() {
             scroll={{ x: 950 }}
             columns={[
               {
-                title: '接入应用',
+                title: '调用来源',
                 render: (_, d: Delivery) => (
                   <>
-                    <b>{d.notification.application.name}</b>
-                    <span className="cell-secondary">{d.notification.application.key}</span>
+                    <b>
+                      {d.notification.apiKey?.name ??
+                        (d.notification.idempotencyScope === 'console'
+                          ? '控制台测试'
+                          : '匿名 / 历史通知')}
+                    </b>
+                    <span className="cell-secondary">
+                      {d.notification.apiKey?.prefix ? d.notification.apiKey.prefix + '…' : ''}
+                    </span>
                   </>
                 ),
               },

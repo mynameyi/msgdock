@@ -100,46 +100,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/applications": {
+    "/api/admin/api-keys": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["ConfigurationController_applications"];
-        put?: never;
-        post: operations["ConfigurationController_createApplication"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/applications/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["ConfigurationController_updateApplication"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/applications/{id}/keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
+        get: operations["ConfigurationController_apiKeys"];
         put?: never;
         post: operations["ConfigurationController_createKey"];
         delete?: never;
@@ -148,7 +116,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/applications/{id}/keys/{keyId}/revoke": {
+    "/api/admin/api-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ConfigurationController_updateKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/api-keys/{id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -158,6 +142,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["ConfigurationController_revokeKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/api-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ConfigurationController_apiSettings"];
+        put: operations["ConfigurationController_saveApiSettings"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -436,7 +436,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/apps/{appKey}/notifications": {
+    "/api/v1/notifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -445,7 +445,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 受理通知（默认需要 Bearer API Key；仅显式关闭鉴权的应用允许匿名发送） */
+        /** 受理通知（默认需要 Bearer API Key；系统关闭鉴权后允许匿名发送） */
         post: operations["NotificationsController_create"];
         delete?: never;
         options?: never;
@@ -453,7 +453,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/apps/{appKey}/notifications/{id}": {
+    "/api/v1/notifications/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -462,7 +462,7 @@ export interface paths {
         };
         /**
          * 查询通知及投递概况
-         * @description 始终需要该应用的 API Key，包括发送采用非鉴权模式的应用。
+         * @description 跟随系统鉴权开关；开启时需要 API Key，关闭后可匿名查询。
          */
         get: operations["NotificationsController_get"];
         put?: never;
@@ -473,7 +473,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/apps/{appKey}/notifications/{id}/deliveries": {
+    "/api/v1/notifications/{id}/deliveries": {
         parameters: {
             query?: never;
             header?: never;
@@ -493,7 +493,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/apps/{appKey}/deliveries/{id}": {
+    "/api/v1/deliveries/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -531,17 +531,14 @@ export interface components {
             /** Format: password */
             newPassword: string;
         };
-        ApplicationDto: {
+        ApiKeyDto: {
             name: string;
-            key: string;
-            /**
-             * @default api_key
-             * @enum {string}
-             */
-            authMode: "api_key" | "none";
             /** @default true */
             enabled: boolean;
-            allowedTargetIds: string[];
+        };
+        ApiSettingsDto: {
+            /** @default true */
+            authEnabled: boolean;
             /** @default 60 */
             perMinuteLimit: number;
         };
@@ -592,15 +589,14 @@ export interface components {
             confirmed: boolean;
         };
         TestSendDto: {
-            applicationId: string;
             /** @description 渠道列表中的渠道短 ID */
             targetIds: string[];
             text: string;
         };
         ApiErrorDto: {
-            /** @example TARGET_NOT_AUTHORIZED */
+            /** @example TARGET_UNAVAILABLE */
             code: string;
-            /** @example 应用无权访问目标 */
+            /** @example 目标不存在或渠道已停用 */
             message: string;
             /**
              * @example null
@@ -616,7 +612,7 @@ export interface components {
         };
         TargetDto: {
             /**
-             * @description targets 使用 ids；topic 使用 key。所有目标需在应用授权范围内。
+             * @description targets 使用 ids；topic 使用 key。目标必须对应已启用的渠道。
              * @example targets
              * @enum {string}
              */
@@ -646,10 +642,10 @@ export interface components {
         };
         NotificationDto: {
             /**
-             * @description 应用内唯一的业务通知标识。同一请求重试复用原值；新通知使用新值。
+             * @description 可选的业务通知标识，在同一 API Key 下去重；匿名请求共用匿名范围。省略时每次请求创建新通知；提供时同一请求重试复用原值。
              * @example order-paid-20261021-001
              */
-            idempotency_key: string;
+            idempotency_key?: string;
             target: components["schemas"]["TargetDto"];
             /** @description 直接文本消息；message 与 template 必须且只能提供一个 */
             message?: components["schemas"]["TextDto"];
@@ -670,6 +666,7 @@ export interface components {
             /** @enum {string} */
             status: "accepted_for_processing";
             delivery_count: number;
+            /** @description 仅提供幂等键且命中已有通知时为 true；未提供时为 false */
             idempotency_hit: boolean;
         };
         DeliveryErrorDto: {
@@ -967,7 +964,7 @@ export interface operations {
             };
         };
     };
-    ConfigurationController_applications: {
+    ConfigurationController_apiKeys: {
         parameters: {
             query?: never;
             header?: never;
@@ -975,84 +972,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        code: "OK";
-                        message: string;
-                        data: unknown;
-                        request_id: string;
-                    };
-                };
-            };
-            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorDto"];
-                };
-            };
-        };
-    };
-    ConfigurationController_createApplication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApplicationDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        code: "OK";
-                        message: string;
-                        data: unknown;
-                        request_id: string;
-                    };
-                };
-            };
-            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorDto"];
-                };
-            };
-        };
-    };
-    ConfigurationController_updateApplication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApplicationDto"];
-            };
-        };
         responses: {
             200: {
                 headers: {
@@ -1083,6 +1002,84 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+        };
+    };
+    ConfigurationController_updateKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+        };
+    };
+    ConfigurationController_revokeKey: {
+        parameters: {
+            query?: never;
+            header?: never;
             path: {
                 id: string;
             };
@@ -1115,19 +1112,54 @@ export interface operations {
             };
         };
     };
-    ConfigurationController_revokeKey: {
+    ConfigurationController_apiSettings: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: string;
-                keyId: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            201: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        code: "OK";
+                        message: string;
+                        data: unknown;
+                        request_id: string;
+                    };
+                };
+            };
+            /** @description 接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorDto"];
+                };
+            };
+        };
+    };
+    ConfigurationController_saveApiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiSettingsDto"];
+            };
+        };
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1628,7 +1660,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string;
-                applicationId?: string;
+                apiKeyId?: string;
                 cursor?: string;
             };
             header?: never;
@@ -1890,10 +1922,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 控制台中配置的接入应用 Key */
-                appKey: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
@@ -1926,7 +1955,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 需要有效的应用 API Key */
+            /** @description 需要有效的 API Key */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1935,7 +1964,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description API Key 不属于该应用或无权访问目标 */
+            /** @description 没有访问权限 */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1953,7 +1982,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 应用发送频率超限 */
+            /** @description 实例发送频率超限 */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1989,8 +2018,6 @@ export interface operations {
                 authorization: string;
             };
             path: {
-                /** @description 控制台中配置的接入应用 Key */
-                appKey: string;
                 id: string;
             };
             cookie?: never;
@@ -2020,7 +2047,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 需要有效的应用 API Key */
+            /** @description 需要有效的 API Key */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2029,7 +2056,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description API Key 不属于该应用或无权访问目标 */
+            /** @description 没有访问权限 */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2038,7 +2065,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 通知不存在或不属于该应用 */
+            /** @description 通知不存在 */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2077,8 +2104,6 @@ export interface operations {
                 authorization: string;
             };
             path: {
-                /** @description 控制台中配置的接入应用 Key */
-                appKey: string;
                 id: string;
             };
             cookie?: never;
@@ -2108,7 +2133,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 需要有效的应用 API Key */
+            /** @description 需要有效的 API Key */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2117,7 +2142,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description API Key 不属于该应用或无权访问目标 */
+            /** @description 没有访问权限 */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2126,7 +2151,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 通知不存在或不属于该应用 */
+            /** @description 通知不存在 */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2162,8 +2187,6 @@ export interface operations {
                 authorization: string;
             };
             path: {
-                /** @description 控制台中配置的接入应用 Key */
-                appKey: string;
                 id: string;
             };
             cookie?: never;
@@ -2193,7 +2216,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 需要有效的应用 API Key */
+            /** @description 需要有效的 API Key */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2202,7 +2225,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description API Key 不属于该应用或无权访问目标 */
+            /** @description 没有访问权限 */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2211,7 +2234,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorDto"];
                 };
             };
-            /** @description 投递不存在或不属于该应用 */
+            /** @description 投递不存在 */
             404: {
                 headers: {
                     [name: string]: unknown;

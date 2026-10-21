@@ -353,9 +353,9 @@
         ]
       }
     },
-    "/api/admin/applications": {
+    "/api/admin/api-keys": {
       "get": {
-        "operationId": "ConfigurationController_applications",
+        "operationId": "ConfigurationController_apiKeys",
         "parameters": [],
         "responses": {
           "200": {
@@ -410,14 +410,14 @@
         ]
       },
       "post": {
-        "operationId": "ConfigurationController_createApplication",
+        "operationId": "ConfigurationController_createKey",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ApplicationDto"
+                "$ref": "#/components/schemas/ApiKeyDto"
               }
             }
           }
@@ -475,9 +475,9 @@
         ]
       }
     },
-    "/api/admin/applications/{id}": {
+    "/api/admin/api-keys/{id}": {
       "put": {
-        "operationId": "ConfigurationController_updateApplication",
+        "operationId": "ConfigurationController_updateKey",
         "parameters": [
           {
             "name": "id",
@@ -493,7 +493,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ApplicationDto"
+                "$ref": "#/components/schemas/ApiKeyDto"
               }
             }
           }
@@ -551,9 +551,9 @@
         ]
       }
     },
-    "/api/admin/applications/{id}/keys": {
+    "/api/admin/api-keys/{id}/revoke": {
       "post": {
-        "operationId": "ConfigurationController_createKey",
+        "operationId": "ConfigurationController_revokeKey",
         "parameters": [
           {
             "name": "id",
@@ -617,29 +617,77 @@
         ]
       }
     },
-    "/api/admin/applications/{id}/keys/{keyId}/revoke": {
-      "post": {
-        "operationId": "ConfigurationController_revokeKey",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
+    "/api/admin/api-settings": {
+      "get": {
+        "operationId": "ConfigurationController_apiSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {},
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
           },
-          {
-            "name": "keyId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
+          "default": {
+            "description": "接口错误；HTTP 状态码保留原有语义，data 为 null，按 code 分支处理。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
             }
           }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
         ],
+        "tags": [
+          "配置"
+        ]
+      },
+      "put": {
+        "operationId": "ConfigurationController_saveApiSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiSettingsDto"
+              }
+            }
+          }
+        },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -1526,7 +1574,7 @@
             }
           },
           {
-            "name": "applicationId",
+            "name": "apiKeyId",
             "required": false,
             "in": "query",
             "schema": {
@@ -2003,21 +2051,10 @@
         ]
       }
     },
-    "/api/v1/apps/{appKey}/notifications": {
+    "/api/v1/notifications": {
       "post": {
         "operationId": "NotificationsController_create",
-        "parameters": [
-          {
-            "name": "appKey",
-            "required": true,
-            "in": "path",
-            "description": "控制台中配置的接入应用 Key",
-            "schema": {
-              "example": "order-service",
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -2029,7 +2066,6 @@
                 "text": {
                   "summary": "文本消息（从渠道列表复制渠道 ID）",
                   "value": {
-                    "idempotency_key": "order-paid-20261021-001",
                     "target": {
                       "type": "targets",
                       "ids": [
@@ -2042,10 +2078,24 @@
                     "expires_in": 3600
                   }
                 },
+                "deduplicated": {
+                  "summary": "可选幂等：重试时复用原键",
+                  "value": {
+                    "idempotency_key": "order-paid-20261021-001",
+                    "target": {
+                      "type": "targets",
+                      "ids": [
+                        "ch_a7c92e4f6b18"
+                      ]
+                    },
+                    "message": {
+                      "text": "订单支付成功。"
+                    }
+                  }
+                },
                 "template": {
                   "summary": "主题与模板（先在控制台创建）",
                   "value": {
-                    "idempotency_key": "order-paid-20261021-002",
                     "target": {
                       "type": "topic",
                       "key": "finance"
@@ -2109,7 +2159,7 @@
             }
           },
           "401": {
-            "description": "需要有效的应用 API Key",
+            "description": "需要有效的 API Key",
             "content": {
               "application/json": {
                 "schema": {
@@ -2119,7 +2169,7 @@
             }
           },
           "403": {
-            "description": "API Key 不属于该应用或无权访问目标",
+            "description": "没有访问权限",
             "content": {
               "application/json": {
                 "schema": {
@@ -2139,7 +2189,7 @@
             }
           },
           "429": {
-            "description": "应用发送频率超限",
+            "description": "实例发送频率超限",
             "content": {
               "application/json": {
                 "schema": {
@@ -2175,27 +2225,17 @@
           },
           {}
         ],
-        "summary": "受理通知（默认需要 Bearer API Key；仅显式关闭鉴权的应用允许匿名发送）",
+        "summary": "受理通知（默认需要 Bearer API Key；系统关闭鉴权后允许匿名发送）",
         "tags": [
           "通知 API"
         ]
       }
     },
-    "/api/v1/apps/{appKey}/notifications/{id}": {
+    "/api/v1/notifications/{id}": {
       "get": {
-        "description": "始终需要该应用的 API Key，包括发送采用非鉴权模式的应用。",
+        "description": "跟随系统鉴权开关；开启时需要 API Key，关闭后可匿名查询。",
         "operationId": "NotificationsController_get",
         "parameters": [
-          {
-            "name": "appKey",
-            "required": true,
-            "in": "path",
-            "description": "控制台中配置的接入应用 Key",
-            "schema": {
-              "example": "order-service",
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "required": true,
@@ -2258,7 +2298,7 @@
             }
           },
           "401": {
-            "description": "需要有效的应用 API Key",
+            "description": "需要有效的 API Key",
             "content": {
               "application/json": {
                 "schema": {
@@ -2268,7 +2308,7 @@
             }
           },
           "403": {
-            "description": "API Key 不属于该应用或无权访问目标",
+            "description": "没有访问权限",
             "content": {
               "application/json": {
                 "schema": {
@@ -2278,7 +2318,7 @@
             }
           },
           "404": {
-            "description": "通知不存在或不属于该应用",
+            "description": "通知不存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -2311,7 +2351,8 @@
         "security": [
           {
             "bearer": []
-          }
+          },
+          {}
         ],
         "summary": "查询通知及投递概况",
         "tags": [
@@ -2319,21 +2360,11 @@
         ]
       }
     },
-    "/api/v1/apps/{appKey}/notifications/{id}/deliveries": {
+    "/api/v1/notifications/{id}/deliveries": {
       "get": {
         "description": "每页最多 50 条。使用返回的 nextCursor 继续查询；null 表示末页。",
         "operationId": "NotificationsController_deliveries",
         "parameters": [
-          {
-            "name": "appKey",
-            "required": true,
-            "in": "path",
-            "description": "控制台中配置的接入应用 Key",
-            "schema": {
-              "example": "order-service",
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "required": true,
@@ -2405,7 +2436,7 @@
             }
           },
           "401": {
-            "description": "需要有效的应用 API Key",
+            "description": "需要有效的 API Key",
             "content": {
               "application/json": {
                 "schema": {
@@ -2415,7 +2446,7 @@
             }
           },
           "403": {
-            "description": "API Key 不属于该应用或无权访问目标",
+            "description": "没有访问权限",
             "content": {
               "application/json": {
                 "schema": {
@@ -2425,7 +2456,7 @@
             }
           },
           "404": {
-            "description": "通知不存在或不属于该应用",
+            "description": "通知不存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -2458,7 +2489,8 @@
         "security": [
           {
             "bearer": []
-          }
+          },
+          {}
         ],
         "summary": "分页查询通知的投递结果",
         "tags": [
@@ -2466,20 +2498,10 @@
         ]
       }
     },
-    "/api/v1/apps/{appKey}/deliveries/{id}": {
+    "/api/v1/deliveries/{id}": {
       "get": {
         "operationId": "NotificationsController_delivery",
         "parameters": [
-          {
-            "name": "appKey",
-            "required": true,
-            "in": "path",
-            "description": "控制台中配置的接入应用 Key",
-            "schema": {
-              "example": "order-service",
-              "type": "string"
-            }
-          },
           {
             "name": "id",
             "required": true,
@@ -2542,7 +2564,7 @@
             }
           },
           "401": {
-            "description": "需要有效的应用 API Key",
+            "description": "需要有效的 API Key",
             "content": {
               "application/json": {
                 "schema": {
@@ -2552,7 +2574,7 @@
             }
           },
           "403": {
-            "description": "API Key 不属于该应用或无权访问目标",
+            "description": "没有访问权限",
             "content": {
               "application/json": {
                 "schema": {
@@ -2562,7 +2584,7 @@
             }
           },
           "404": {
-            "description": "投递不存在或不属于该应用",
+            "description": "投递不存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -2595,7 +2617,8 @@
         "security": [
           {
             "bearer": []
-          }
+          },
+          {}
         ],
         "summary": "查询单个目标的投递结果",
         "tags": [
@@ -2628,7 +2651,7 @@
       "anonymous": {
         "type": "http",
         "scheme": "bearer",
-        "description": "仅为发送接口的匿名配置说明；实际以应用 authMode 为准"
+        "description": "仅为发送接口的匿名配置说明；实际以系统 authEnabled 为准"
       }
     },
     "schemas": {
@@ -2685,32 +2708,28 @@
           "newPassword"
         ]
       },
-      "ApplicationDto": {
+      "ApiKeyDto": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string"
           },
-          "key": {
-            "type": "string"
-          },
-          "authMode": {
-            "type": "string",
-            "enum": [
-              "api_key",
-              "none"
-            ],
-            "default": "api_key"
-          },
           "enabled": {
             "type": "boolean",
             "default": true
-          },
-          "allowedTargetIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          }
+        },
+        "required": [
+          "name",
+          "enabled"
+        ]
+      },
+      "ApiSettingsDto": {
+        "type": "object",
+        "properties": {
+          "authEnabled": {
+            "type": "boolean",
+            "default": true
           },
           "perMinuteLimit": {
             "type": "number",
@@ -2718,11 +2737,7 @@
           }
         },
         "required": [
-          "name",
-          "key",
-          "authMode",
-          "enabled",
-          "allowedTargetIds",
+          "authEnabled",
           "perMinuteLimit"
         ]
       },
@@ -2834,9 +2849,6 @@
       "TestSendDto": {
         "type": "object",
         "properties": {
-          "applicationId": {
-            "type": "string"
-          },
           "targetIds": {
             "description": "渠道列表中的渠道短 ID",
             "items": {
@@ -2850,7 +2862,6 @@
           }
         },
         "required": [
-          "applicationId",
           "targetIds",
           "text"
         ]
@@ -2860,11 +2871,11 @@
         "properties": {
           "code": {
             "type": "string",
-            "example": "TARGET_NOT_AUTHORIZED"
+            "example": "TARGET_UNAVAILABLE"
           },
           "message": {
             "type": "string",
-            "example": "应用无权访问目标"
+            "example": "目标不存在或渠道已停用"
           },
           "data": {
             "type": "object",
@@ -2915,7 +2926,7 @@
               "topic"
             ],
             "example": "targets",
-            "description": "targets 使用 ids；topic 使用 key。所有目标需在应用授权范围内。"
+            "description": "targets 使用 ids；topic 使用 key。目标必须对应已启用的渠道。"
           },
           "ids": {
             "example": [
@@ -2968,7 +2979,7 @@
         "properties": {
           "idempotency_key": {
             "type": "string",
-            "description": "应用内唯一的业务通知标识。同一请求重试复用原值；新通知使用新值。",
+            "description": "可选的业务通知标识，在同一 API Key 下去重；匿名请求共用匿名范围。省略时每次请求创建新通知；提供时同一请求重试复用原值。",
             "example": "order-paid-20261021-001",
             "minLength": 1,
             "maxLength": 200,
@@ -3006,7 +3017,6 @@
           }
         },
         "required": [
-          "idempotency_key",
           "target"
         ]
       },
@@ -3027,7 +3037,8 @@
             "type": "number"
           },
           "idempotency_hit": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "仅提供幂等键且命中已有通知时为 true；未提供时为 false"
           }
         },
         "required": [

@@ -57,15 +57,18 @@ async function main() {
       .addSecurity('anonymous', {
         type: 'http',
         scheme: 'bearer',
-        description: '仅为发送接口的匿名配置说明；实际以应用 authMode 为准',
+        description: '仅为发送接口的匿名配置说明；实际以系统 authEnabled 为准',
       })
       .build(),
     { extraModels: [ApiErrorDto] },
   );
   describeResponseContract(document);
   // Empty security requirement expresses conditional anonymous access without inventing a second credential.
-  const path = document.paths['/api/v1/apps/{appKey}/notifications'];
-  if (path?.post) path.post.security = [{ bearer: [] }, {}];
+  for (const [path, operations] of Object.entries(document.paths)) {
+    if (!path.startsWith('/api/v1/')) continue;
+    for (const operation of [operations?.get, operations?.post])
+      if (operation) operation.security = [{ bearer: [] }, {}];
+  }
   if (process.env.OPENAPI_OUTPUT) {
     const filename = resolve(process.env.OPENAPI_OUTPUT);
     mkdirSync(resolve(filename, '..'), { recursive: true });

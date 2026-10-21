@@ -14,7 +14,8 @@ export class AcceptedNotificationDto {
   @ApiProperty({ format: 'uuid' }) notification_id!: string;
   @ApiProperty({ enum: ['accepted_for_processing'] }) status!: string;
   @ApiProperty() delivery_count!: number;
-  @ApiProperty() idempotency_hit!: boolean;
+  @ApiProperty({ description: '仅提供幂等键且命中已有通知时为 true；未提供时为 false' })
+  idempotency_hit!: boolean;
 }
 export class DeliveryErrorDto {
   @ApiProperty({ example: 'DELIVERY_FAILED', description: 'MsgDock 归一化的投递原因码' })
@@ -61,8 +62,8 @@ export class DeliveryPageDto {
   nextCursor!: string | null;
 }
 export class ApiErrorDto {
-  @ApiProperty({ example: 'TARGET_NOT_AUTHORIZED' }) code!: string;
-  @ApiProperty({ example: '应用无权访问目标' }) message!: string;
+  @ApiProperty({ example: 'TARGET_UNAVAILABLE' }) code!: string;
+  @ApiProperty({ example: '目标不存在或渠道已停用' }) message!: string;
   @ApiProperty({
     type: 'object',
     additionalProperties: false,

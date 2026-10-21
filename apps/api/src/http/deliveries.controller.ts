@@ -28,14 +28,14 @@ export class DeliveriesController {
   }
   @Get('deliveries')
   @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'applicationId', required: false })
+  @ApiQuery({ name: 'apiKeyId', required: false })
   @ApiQuery({ name: 'cursor', required: false })
   list(
     @Query('status') status?: string,
-    @Query('applicationId') applicationId?: string,
+    @Query('apiKeyId') apiKeyId?: string,
     @Query('cursor') cursor?: string,
   ) {
-    return this.deliveries.list({ status, applicationId, cursor });
+    return this.deliveries.list({ status, apiKeyId, cursor });
   }
   @Get('deliveries/:id') detail(@Param('id', ParseUUIDPipe) id: string) {
     return this.deliveries.detail(id);
@@ -61,12 +61,7 @@ export class DeliveriesController {
     return this.deliveries.resolve(id, req.admin.username, body.reason);
   }
   @Post('notifications/test') test(@Body() body: TestSendDto, @Req() req: AdminRequest) {
-    return this.notifications.adminTest(
-      body.applicationId,
-      body.targetIds,
-      body.text,
-      req.admin.username,
-    );
+    return this.notifications.adminTest(body.targetIds, body.text, req.admin.username);
   }
   @Get('system') async system() {
     let redisReady = false;

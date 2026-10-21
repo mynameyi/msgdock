@@ -1,14 +1,13 @@
 export { client, unwrap, ApiError, setCsrfToken } from '@msgdock/api-client';
 export type { components } from '@msgdock/api-client';
-export type AppRecord = {
+export type ApiKeyRecord = {
   id: string;
-  key: string;
   name: string;
-  authMode: 'api_key' | 'none';
+  prefix: string;
+  key: string | null;
   enabled: boolean;
-  allowedTargetIds: string[];
-  perMinuteLimit: number;
-  keys: { id: string; prefix: string; createdAt: string }[];
+  revokedAt: string | null;
+  createdAt: string;
 };
 export type Target = {
   id: string;
@@ -45,7 +44,10 @@ export type Delivery = {
   error: { code: string; message: string; source_code: string | null } | null;
   channelId: string;
   replayOfDeliveryId: string | null;
-  notification: { application: { id: string; name: string; key: string } };
+  notification: {
+    apiKey: { id: string; name: string; prefix: string } | null;
+    idempotencyScope: string;
+  };
 };
 export const statusNames: Record<string, string> = {
   pending: '排队中',

@@ -8,10 +8,10 @@ import { deliveryView } from './view';
 @Injectable()
 export class DeliveriesService {
   constructor(private readonly db: DatabaseService) {}
-  async list(filter: { status?: string; applicationId?: string; cursor?: string }) {
+  async list(filter: { status?: string; apiKeyId?: string; cursor?: string }) {
     const where: Prisma.DeliveryWhereInput = {
       ...(filter.status ? { status: filter.status } : {}),
-      ...(filter.applicationId ? { notification: { applicationId: filter.applicationId } } : {}),
+      ...(filter.apiKeyId ? { notification: { apiKeyId: filter.apiKeyId } } : {}),
     };
     const rows = await this.db.delivery.findMany({
       where,
@@ -29,7 +29,10 @@ export class DeliveriesService {
         replayOfDeliveryId: true,
         channelId: true,
         notification: {
-          select: { application: { select: { id: true, name: true, key: true } } },
+          select: {
+            apiKey: { select: { id: true, name: true, prefix: true } },
+            idempotencyScope: true,
+          },
         },
       },
     });
@@ -43,7 +46,7 @@ export class DeliveriesService {
       where: { id },
       include: {
         attempts: { orderBy: { startedAt: 'asc' } },
-        notification: { include: { application: { select: { name: true, key: true } } } },
+        notification: { include: { apiKey: { select: { id: true, name: true, prefix: true } } } },
       },
     });
     if (!result) throw new ServiceError('DELIVERY_NOT_FOUND');
@@ -67,16 +70,19 @@ export class DeliveriesService {
     return this.db.$transaction(async (tx) => {
       const source = await tx.delivery.findUnique({
         where: { id },
-        include: { notification: { include: { application: true } } },
+        include: { notification: { include: { apiKey: true } } },
       });
       if (!source) throw new ServiceError('DELIVERY_NOT_FOUND');
       if (!['failed', 'expired', 'unknown', 'cancelled'].includes(source.status))
         throw new ServiceError('DELIVERY_STATE_CONFLICT', '当前状态不允许重发');
       if (source.status === 'unknown' && !confirmed)
         throw new ServiceError('DELIVERY_CONFIRMATION_REQUIRED');
-      const app = source.notification.application;
-      if (!app.enabled || !app.allowedTargetIds.includes(source.targetId))
-        throw new ServiceError('APPLICATION_ACCESS_REVOKED');
+      const key = source.notification.apiKey;
+      if (source.notification.apiKeyId && (!key?.enabled || key.revokedAt))
+        throw new ServiceError(
+          'DELIVERY_STATE_CONFLICT',
+          '原投递的 API Key 已停用或撤销，请使用有效 Key 创建新通知',
+        );
       const target = await tx.target.findUnique({
         where: { id: source.targetId },
         include: { channel: true },
@@ -150,7 +156,7 @@ export class DeliveriesService {
       groups,
       previous,
       channels,
-      applications,
+      apiKeys,
       latest,
       hours,
       days,
@@ -177,7 +183,7 @@ export class DeliveriesService {
           _count: { select: { targets: true } },
         },
       }),
-      this.db.application.count(),
+      this.db.apiKey.count(),
       this.list({}),
       this.db.$queryRaw<
         { bucket: Date; count: bigint }[]
@@ -202,7 +208,7 @@ export class DeliveriesService {
       unknownCount,
       previous,
       channels,
-      applications,
+      apiKeys,
       recent: latest.items.slice(0, 5),
       hours: hours.map((h) => ({ time: h.bucket.toISOString(), count: Number(h.count) })),
       days: days.map((h) => ({ time: h.bucket.toISOString(), count: Number(h.count) })),

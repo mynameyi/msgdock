@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.6 |
+| 文档版本 | v0.7 |
 | 更新日期 | 2026-10-21 |
 | 状态 | 架构基线与演进目标；0.2.0 加入可信内置渠道插件 |
 | 仓库 | [mynameyi/msgdock](https://github.com/mynameyi/msgdock) |
@@ -31,7 +31,7 @@
 | 执行语义 | 按至少一次执行设计，使用幂等、租约与结果核查控制重复 | 第三方接口并不统一提供端到端幂等和可查询回执 |
 | 渲染与部署 | React SPA；Fastify 同域提供静态资源和 API | 前后端代码分离，发布时合并进一个镜像 |
 | 部署单元 | 单个 Docker 镜像、单个容器，内含 API、Worker、PostgreSQL 与 Redis | 默认不要求另行部署数据库、Redis 或 Nginx |
-| 推送接口鉴权 | 每个应用可选 api_key 或 none，默认 api_key | API Key 通过 HTTP 请求头 Authorization: Bearer 传递；关闭鉴权仅作用于指定应用的发送接口 |
+| 推送接口鉴权 | 系统级 authEnabled 开关，默认 true | API Key 通过 HTTP 请求头 Authorization: Bearer 传递；开启时发送和查询需要 Key；关闭后可免 Key 调用，无应用标识 |
 
 前端和后端分别确定代码组织方式。MVC、MVVM、DDD 与 Feature-based 解决的问题并不相同，本项目不以其中一个名称概括全部实现：前端采用 React 常见的组件与状态组织方式，后端采用 NestJS 业务模块和分层服务。领域建模重点用于投递规则，普通配置功能采用直接的增删改查实现。
 
@@ -46,8 +46,8 @@
 
 ### 2.2 首版交付范围
 
-- 一个部署实例对应一个工作空间，支持多个接入应用、多个管理员与角色。
-- 应用 API Key、默认开启的发送鉴权、显式可选的非鉴权发送、管理端登录、资源授权和操作审计。
+- 一个部署实例对应一个工作空间，支持多个独立 API Key；多管理员与角色为后续目标。
+- 独立 API Key、默认开启的系统级鉴权、显式可选的免 Key 调用、管理端登录和操作审计。
 - 渠道实例、目标、主题、路由规则、模板版本与发送测试。
 - 企业微信群 Webhook、飞书群 Webhook、钉钉企业机器人主动发送。
 - 通知受理、持久化投递、模板渲染、目标级状态、限流、过期、明确失败后的重试。
@@ -127,11 +127,11 @@ flowchart TD
 
 前后端代码分离，部署时使用同一个域名。根路径 `/` 提供公开产品介绍，`/docs` 及其子页面提供公开开发文档，`/console` 及其子页面提供需要初始化或登录的管理控制台。`/api/v1/` 提供业务 API，`/api/admin/` 提供管理接口；`/webhooks/im/` 为后续平台 HTTP 回调预留。前端路由回退规则只处理页面路径，API 与回调错误保留其原始 HTTP 状态。
 
-公开页面使用独立布局，不挂载后台登录守卫，不请求会话、初始化状态、应用列表、目标列表或系统状态。后台仍使用管理员会话和 CSRF 校验。旧后台页面路径兼容跳转至 `/console` 对应地址，保留查询参数和锚点。
+公开页面使用独立布局，不挂载后台登录守卫，不请求会话、初始化状态、密钥列表、目标列表或系统状态。后台仍使用管理员会话和 CSRF 校验。旧后台页面路径兼容跳转至 `/console` 对应地址，保留查询参数和锚点。
 
 `/docs` 提供快速接入，`/docs/plugins` 从仓库约定 Markdown 构建插件指南，`/docs/swagger` 提供 Swagger UI，`/docs/redoc` 提供 ReDoc。两种接口视图按路由懒加载，JS、CSS 与文档一起打入单镜像，无 CDN 或额外文档服务。公开 `/openapi.json` 通过明确的通知 API 路径白名单从完整契约投影，并只保留被引用的 Schema 及 Bearer 鉴权。后台与初始化接口不进入公开视图；仓库完整契约继续用于内部客户端生成。
 
-Swagger UI 的在线调用仅允许当前实例的通知 API，省略管理会话 Cookie，授权值不写入浏览器持久存储。调试默认不执行请求；用户点击 Execute 后按实际应用鉴权、权限、限流和幂等规则处理。
+Swagger UI 的在线调用仅允许当前实例的通知 API，省略管理会话 Cookie，授权值不写入浏览器持久存储。调试默认不执行请求；用户点击 Execute 后按系统级鉴权、共享限流和幂等规则处理。
 
 控制台首版采用按需刷新与有界轮询。后续出现实时状态需求时增加 SSE。机器人 WebSocket 与长轮询由 Worker 管理，与浏览器页面生命周期分开。
 
@@ -194,7 +194,7 @@ apps/console/src/
 │   │   ├── queries.ts          # Query Key、Query Options、Mutation
 │   │   ├── types.ts            # 页面专用类型；公开 DTO 取自 api-client
 │   │   └── index.ts            # 对其他模块公开的入口
-│   ├── applications/
+│   ├── api-keys/
 │   ├── targets/
 │   ├── templates/
 │   ├── notifications/
@@ -268,7 +268,7 @@ apps/worker/src/
 | 模块 | 主要职责 |
 | --- | --- |
 | identity | 管理员、角色、会话、管理端授权 |
-| applications | 接入应用、auth_mode（默认 api_key）、API Key、可访问主题与目标范围 |
+| API Key / API settings | 独立密钥的创建、停用、撤销与系统级鉴权开关 |
 | channels | 渠道实例、加密凭证、能力声明、健康状态 |
 | routing | 注册目标、主题、路由规则、投递目标解析与去重 |
 | templates | 模板、版本、变量定义、预览和渲染规则 |
@@ -305,7 +305,7 @@ Controller 不直接调用 Prisma 或平台 SDK；队列 Processor 与 HTTP Cont
 - **目标**：注册的群、用户、部门或平台会话，绑定所属渠道实例及可发送范围。
 - **主题**：业务使用的逻辑接收集合，例如 finance；路由到一个或多个已授权目标。
 
-当前实现每个渠道实例只有一个接收目标，控制台仅要求填写渠道名称，内部目标在创建和保存时沿用此名称。应用授权、路由和发送测试使用渠道名称展示目标，实际平台地址仍由插件的凭证和目标配置决定。重命名保留目标 ID 与既有授权、路由引用，不修改历史投递快照；未来支持一渠道多目标时再提供独立目标管理。
+当前实现每个渠道实例只有一个接收目标，控制台仅要求填写渠道名称，内部目标在创建和保存时沿用此名称。路由和发送测试使用渠道名称展示目标，实际平台地址仍由插件的凭证和目标配置决定。重命名保留目标 ID 与路由引用，不修改历史投递快照；未来支持一渠道多目标时再提供独立目标管理。
 
 渠道实例另有对外短 ID（`ch_` 加 12 位小写十六进制字符），系统生成并持久化，实例内唯一且重命名不变。列表提供复制入口，通知 API 的 target.ids 及控制台测试发送仅接受渠道短 ID；短 ID 解析后按内部目标 UUID 复核授权、去重和生成投递快照。数据库通过唯一约束保证不重复，新建碰撞重试整个事务。迁移为已有渠道补齐短 ID，不替换主键或既有引用。
 
@@ -373,30 +373,30 @@ Channel 固定插件版本与配置结构版本；Delivery 在受理时固定插
 | --- | --- |
 | Workspace | 部署工作空间与资源归属 |
 | User / Role / Session | 管理身份、权限、服务端会话与到期信息 |
-| Application / ApiKey | 接入应用、密钥摘要、权限范围、撤销与轮换 |
+| ApiKey / ApiSettings | 密钥名称、鉴权摘要、可恢复密文、停用与撤销；系统级 authEnabled 与共享发送限额 |
 | ChannelInstance | 插件 ID、精确插件版本、配置结构版本、加密配置、启停和健康状态 |
 | ConnectionLease | 需要长连接的渠道实例、持有者、租约期限和递增 epoch；按渠道阶段启用 |
-| Target / Topic / Route | 已注册目标、逻辑主题和路由关系；包含应用授权 |
+| Target / Topic / Route | 已注册目标、逻辑主题和路由关系 |
 | Template / TemplateVersion | 模板标识、不可变版本、变量定义与渲染内容 |
-| Notification | 应用、原始受理时间、期限、固定快照、关联标识 |
+| Notification | API Key（可空）、幂等范围、原始受理时间、期限、固定快照、关联标识 |
 | Delivery | 固定插件 ID / 版本 / 配置结构版本、目标和渠道、状态、期限、调度代次、下次执行时间、执行租约与可选 ordering_key |
 | DeliveryAttempt | 每次真实发送的请求标识、起止时间、分类结果和平台消息 ID |
-| IdempotencyRecord | 工作空间、应用、操作、幂等键、请求摘要、通知 ID、保留期限 |
+| Notification 幂等字段 | idempotencyScope、idempotencyKey、requestHash；与通知一起持久化 |
 | OutboxEvent | 待入队投递、调度代次、notBefore、发布状态和发布租约 |
 | InboxEvent | 平台事件标识、验签结果、去重键与异步处理状态；按渠道阶段启用 |
 | AuditLog | 操作者、动作、资源、时间与脱敏变更摘要 |
 
-主要关系：一条 Notification 对应多条 Delivery，一条 Delivery 对应多条 DeliveryAttempt。应用、主题、目标、模板和渠道资源均带工作空间归属；接入请求的应用身份从凭证取得。
+主要关系：一条 Notification 对应多条 Delivery，一条 Delivery 对应多条 DeliveryAttempt。实例中的主题、目标、模板和渠道由管理员管理。Key 仅用来访问通知接口，不要求接入应用。
 
 ### 9.1 索引与约束
 
 - 主键使用应用生成的 UUID，时间以 UTC timestamptz 保存，对外采用 ISO 8601。
-- 幂等键唯一约束覆盖 workspace_id、application_id、operation、key。
+- 幂等键唯一约束为 idempotencyScope 与 idempotencyKey；scope 为 Key ID、anonymous 或 console。
 - 同一通知的目标去重键覆盖 channel_instance_id、target_id 与消息分段序号。
 - DeliveryAttempt 对 delivery_id、attempt_no 建立唯一约束。
 - Outbox 对 delivery_id、schedule_generation、event_type 建立唯一约束。
 - 平台事件对工作空间、渠道实例、平台事件 ID 建立唯一约束；无稳定事件 ID 时由适配器提供文档化去重策略。
-- Delivery 为状态、next_attempt_at、expires_at 建立调度索引，为应用、创建时间和 ID 建立查询索引。
+- Delivery 为状态、next_attempt_at、expires_at 建立调度索引，为创建时间和 ID 建立查询索引。
 - JSONB 保存版本化配置和消息快照；权限、归属、状态、时间等检索字段采用明确列。
 
 关联资源停用采用明确状态。删除策略保留投递所需快照和审计依据；不通过级联删除抹去发送历史。
@@ -405,13 +405,13 @@ Channel 固定插件版本与配置结构版本；Delivery 在受理时固定插
 
 ### 10.1 通知受理事务
 
-1. 从路径解析接入应用并读取其 auth_mode；按模式验证 API Key 或建立该应用的匿名发送上下文，检查应用权限、限额、请求大小和基本结构，规范化请求并计算摘要。
-2. 按应用与操作范围查询幂等记录；命中时核对摘要并返回原通知或冲突结果。
+1. 读取系统 authEnabled 配置。开启时校验 Bearer API Key，关闭且未带 Key 时建立匿名上下文；检查共享发送限额、请求大小和基本结构，规范化请求并计算摘要。
+2. 提供幂等键时按 Key ID 或 anonymous 范围查询；命中时核对摘要并返回原通知或冲突。未提供时生成每次独立的内部标识，不按内容自动去重。
 3. 未命中时，在同一数据库事务内建立幂等记录，读取有效模板与授权路由，完成变量、目标去重和能力检查，创建 Notification、Delivery、固定快照与 OutboxEvent。
 4. 幂等记录与通知在同一事务绑定；并发插入冲突时重新读取已提交记录并核对摘要，避免生成第二组投递计划。
 5. 事务成功后返回 202 和 Notification ID；不在请求中调用 IM 发送接口。
 
-幂等键对发送请求必填。同键同语义请求返回原通知；同键不同请求返回 409。请求摘要基于规范化的受理字段计算，忽略请求追踪等非语义元数据；相对 TTL 保留第一次受理产生的 expires_at，不因重复请求延长。
+幂等键对发送请求可选。不传时，每次请求使用独立的内部标识并创建新通知，不根据内容摘要自动去重；提供时，同键同语义请求返回原通知，同键不同请求返回 409。请求摘要基于规范化的受理字段计算，忽略请求追踪等非语义元数据；相对 TTL 保留第一次受理产生的 expires_at，不因重复请求延长。此次可选性调整无需数据库迁移，既有幂等记录不变。
 
 默认消息有效期为 1 小时，首版允许配置至最多 7 天；幂等记录默认保留 30 天，具体配额由管理员控制。保留期结束后的相同键可能作为新请求受理，接口文档必须公开这一语义。
 
@@ -493,22 +493,22 @@ accepted 的语义是平台接受，MsgDock 不承诺所有渠道端到端恰好
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| POST /api/v1/apps/{app_key}/notifications | 按应用配置使用鉴权或非鉴权模式，幂等受理通知 |
-| GET /api/v1/apps/{app_key}/notifications/{id} | 始终需要 API Key，查询通知与目标状态计数 |
-| GET /api/v1/apps/{app_key}/notifications/{id}/deliveries | 始终需要 API Key，游标分页查询投递 |
-| GET /api/v1/apps/{app_key}/deliveries/{id} | 始终需要 API Key，查询单次目标投递及公开结果 |
+| POST /api/v1/notifications | 按系统配置使用 API Key 或免 Key 模式，幂等受理通知 |
+| GET /api/v1/notifications/{id} | 按系统鉴权开关校验 Key，查询通知与目标状态计数 |
+| GET /api/v1/notifications/{id}/deliveries | 始终需要 API Key，游标分页查询投递 |
+| GET /api/v1/deliveries/{id} | 按系统鉴权开关校验 Key，查询单次目标投递及公开结果 |
 | POST /api/admin/deliveries/{id}/replays | 在授权和审计下创建关联重发 |
 | POST /api/admin/deliveries/{id}/cancel | 取消 pending 或 retry_wait 投递 |
 | POST /api/admin/channels/{id}/test | 向已授权测试目标发送测试通知 |
 | POST /webhooks/im/{type}/{instanceId} | 按平台要求接收事件；校验探测方法由适配器实现 |
 
-所有资源查询检查工作空间与应用授权。后台接口以服务端会话认证；业务 API 使用 API Key，只有明确设置为 none 的应用允许匿名调用其通知发送接口。app_key 是公开的应用标识，不是凭证；路径、有效 API Key 的归属必须一致，不能跨应用调用。越权资源统一返回受控的未找到或禁止结果。
+后台接口以管理员会话认证。通知接口使用独立 API Key，不需要 app_key 或 clientId。有效 Key 具有相同的通知接口权限，可以查询实例中已有通知。关闭系统鉴权后，发送和查询均可免 Key 调用。
 
 发送示例：
 
 ```http
-POST /api/v1/apps/order-service/notifications
-Authorization: Bearer <application-api-key>
+POST /api/v1/notifications
+Authorization: Bearer <API_KEY>
 Content-Type: application/json
 ```
 
@@ -547,15 +547,15 @@ Content-Type: application/json
 }
 ```
 
-accepted_for_processing 表示 MsgDock 已可靠受理，与 Delivery 的平台 accepted 状态分开。重复受理返回原通知 ID，并通过 data.idempotency_hit 标识幂等命中。idempotency_key 为 JSON 必填字段；旧请求头不再参与幂等判断，计算业务摘要前拆出该字段。通知请求、响应与数据库不保留 event 字段；旧幂等键及摘要继续保留，升级后的请求若与旧摘要不同则返回 409，不重置去重记录。
+accepted_for_processing 表示 MsgDock 已可靠受理，与 Delivery 的平台 accepted 状态分开。提供幂等键的重复受理返回原通知 ID，并通过 data.idempotency_hit 标识幂等命中；未提供时始终创建新通知且命中标识为 false。idempotency_key 为 JSON 可选字段；旧请求头被忽略，计算业务摘要前拆出该字段。通知请求、响应与数据库不保留 event 字段；旧幂等键及摘要继续保留，升级后的请求若与旧摘要不同则返回 409，不重置去重记录。
 
-非鉴权模式使用相同路径、请求体、幂等规则及响应格式，省略 Authorization 请求头。服务端仅依据已保存的应用配置决定是否允许，不接受通过请求参数或请求头临时关闭鉴权。无论模式如何，始终限制该应用可访问的主题与目标，并执行速率、积压和消息大小限制。
+非鉴权模式使用相同路径、请求体、幂等规则及响应格式，省略 Authorization 请求头。服务端仅依据已保存的系统配置决定是否允许，不接受通过请求参数或请求头临时关闭鉴权。两种模式都执行实例共享发送限额、渠道状态、积压和消息大小限制。
 
-OpenAPI 使用 HTTP bearer 安全方案描述 API Key（type: http、scheme: bearer；该 Key 是不透明随机值，不要求是 JWT）[R17]。匿名发送在契约中作为可选安全要求表达，并说明其生效条件由应用配置决定。管理端接口保持独立的会话安全方案。
+OpenAPI 使用 HTTP bearer 安全方案描述 API Key（type: http、scheme: bearer；该 Key 是不透明随机值，不要求是 JWT）[R17]。匿名发送在契约中作为可选安全要求表达，并说明其生效条件由系统设置决定。管理端接口保持独立的会话安全方案。
 
 ### 11.2 错误与版本
 
-业务与管理接口统一返回 code、message、data、request_id；接口成功 code=OK，失败 data=null，参数校验时附带受控 details。校验或模板语义不满足用 400，缺失或无效 API Key 用 401，凭证与应用或操作范围不匹配用 403，幂等冲突或不可取消状态用 409，速率限制用 429，数据库不可用或超过受理积压上限用 503；事务未确认成功不得返回 202。错误码由显式 ServiceError 与错误码目录提供，不根据中文文案匹配，不再只用 HTTP_403 这类粗粒度代码。
+业务与管理接口统一返回 code、message、data、request_id；接口成功 code=OK，失败 data=null，参数校验时附带受控 details。校验或模板语义不满足用 400，缺失或无效 API Key 用 401，管理员操作无权限或 CSRF 校验失败用 403，幂等冲突或不可取消状态用 409，速率限制用 429，数据库不可用或超过受理积压上限用 503；事务未确认成功不得返回 202。错误码由显式 ServiceError 与错误码目录提供，不根据中文文案匹配，不再只用 HTTP_403 这类粗粒度代码。
 
 接口结果与异步投递结果分层：查询 HTTP 200 / code=OK 时，data 内的投递仍可能 failed 或 unknown。投递模型使用 status 与 error，error 包含 MsgDock code、说明 message 和插件原始 source_code；内部 lastCode/lastMessage 与发送尝试证据保留原存储。网络超时可能没有响应 JSON，调用方复用原业务键重试或查询；unknown 需先核实，不据此自动重发。完整契约与升级说明见[响应规范与错误码](api-contract.md)，公开页面为 `/docs/responses`。
 
@@ -565,17 +565,16 @@ OpenAPI 在 CI 生成、检查并同步 api-client，前端请求参数和响应
 
 ## 12. 身份、凭证与回调安全
 
-### 12.1 管理与应用授权
+### 12.1 管理登录与 API Key
 
-- 管理端使用服务端会话、HttpOnly 与 Secure Cookie，配置适当 SameSite，并对写操作验证 CSRF Token 和请求来源。
-- Owner 管理实例与身份权限；Admin 管理业务配置；Operator 执行授权范围内的发送与重发；Viewer 只读。敏感凭证操作单独授权并审计。
-- 管理密码使用 Argon2id 摘要；会话具备闲置与绝对到期时间，登录限速并记录异常。
-- API Key 使用高熵随机值，仅创建时完整显示；数据库保存可检索前缀与安全摘要，支持范围限制、撤销与重叠轮换。
-- API Key 固定通过 HTTP 请求头 Authorization: Bearer <API_KEY> 传递；不放在 HTML 的 head、URL 查询参数或前端构建产物中。业务系统的服务端持有并使用 Key。
-- 新建应用的 auth_mode 默认 api_key；缺失配置或值不合法时按开启鉴权处理。管理员可以显式改为 none，界面明确显示“非鉴权”，保存操作者、时间和变更审计。
-- none 只开放该应用的通知发送入口；管理端、通知查询、凭证管理与平台回调验签都不受影响。匿名上下文中的 application_id、workspace_id 与可访问目标取自已保存的应用配置，禁止请求覆盖。
-- 即使应用允许匿名发送，只要请求携带 Authorization，就严格校验；无效、过期、撤销或归属不匹配的 Key 直接拒绝，不降级为匿名。
-- 鉴权上下文中的 application_id、workspace_id 和可访问目标来自有效凭证及应用配置；请求中的资源 ID 必须在授权范围内解析。两种模式共用同一个应用幂等范围；幂等键不作为查询凭证。
+- 后台通过服务端会话、HttpOnly Cookie、CSRF Token 与请求来源检查保护。API Key 不授予后台管理权限。
+- API Key 是高熵随机值；数据库保存 SHA-256 鉴权摘要、可识别前缀和 AES-256-GCM 加密副本。管理员列表直接显示完整值并支持复制，刷新与重启后仍可查看；旧的仅摘要记录无法还原并明确提示。支持命名、停用、永久撤销和重叠轮换，无需 clientId/clientSecret 或 Token 交换。
+- 请求头使用 Authorization: Bearer <API_KEY>，不放入 HTML head、URL 或公开前端代码。
+- ApiSettings.authEnabled 为实例级开关，默认 true；配置缺失也按开启处理。管理员在系统设置修改，写入审计，下一次请求立即生效。
+- 开启时通知发送与查询必须提供有效 Key。关闭后可以不带 Key；若主动携带 Key，仍严格验证，不因允许匿名而接受错误或已撤销凭证。
+- 当前有效 Key 具有相同通知权限；实例共用每分钟发送额度。后台测试发送直接使用管理员会话，不要求选择应用或 API Key。
+- 幂等键可选，同一 Key 下去重；匿名调用共用 anonymous 范围，控制台测试使用 console 范围并生成独立键。
+- 队列执行前重新核查 Key 与渠道状态；Key 停用或撤销后未执行投递会取消。已受理的匿名通知不因鉴权开关重新开启而自动取消。
 
 ### 12.2 平台密钥与外部访问
 
@@ -624,7 +623,7 @@ HTTP 与长连接事件都归一化为内部事件。按平台协议验证签名
 
 ### 13.3 指标与追踪
 
-结构化日志包含 request_id、notification_id、delivery_id、attempt_id、application_id 和 channel_instance_id。面向指标系统的标签控制基数，逐条业务 ID 保留在日志与追踪中，不作为无限增长的指标标签。
+结构化日志包含 request_id、notification_id、delivery_id、attempt_id、api_key_id 和 channel_instance_id。面向指标系统的标签控制基数，逐条业务 ID 保留在日志与追踪中，不作为无限增长的指标标签。
 
 核心指标包括 API 受理耗时与错误率、Outbox 最老等待时间、投递排队时间、真实发送耗时、平台接受率、unknown 数量与年龄、重试次数、过期数量、限流等待、连接重连次数。记录 API 与 Worker 的关联标识，按需要接入 OpenTelemetry 和集中指标系统。
 
@@ -646,20 +645,20 @@ PostgreSQL 定期备份并验证恢复；对正式环境按部署方式增加 WA
 | 队列集成测试 | 真实 Redis / BullMQ 的重复入队、延迟、断连、补偿和多 Worker 配额 |
 | 前端测试 | 查询与 Mutation 状态、表单、权限体验、错误与未知结果展示 |
 | 端到端测试 | 登录、配置、测试发送、通知查询、人工重发与审计 |
-| 鉴权模式测试 | 默认鉴权、匿名发送范围、切换与撤销、无效 Key 不降级、查询始终鉴权、应用间隔离 |
+| 鉴权模式测试 | 默认鉴权、免 Key 发送与查询、系统开关切换、Key 停用撤销、无效 Key 不降级、共享限额 |
 | 单容器部署验收 | 空卷初始化、重启与升级、迁移失败、子进程故障、健康状态、信号退出、备份恢复 |
 | 故障与恢复 | Outbox 标记前崩溃、Redis 数据丢失、平台超时、Worker 失联与租约过期 |
 
 关键验收条件：
 
-1. 并发提交相同幂等键和相同请求只生成一组投递计划；不同请求返回冲突。
+1. 并发提交相同幂等键和相同请求只生成一组投递计划；不同请求返回冲突。未提供幂等键时，即使内容相同也分别创建通知。
 2. 数据库提交后进程中断，Outbox 可以恢复未入队任务。
 3. 重复 Job 或迟到的旧代次 Job 不对已完成投递再次发送。
 4. 平台可能已接收但本地未取得结果时，界面与 API 显示 unknown，并遵循核查策略。
 5. Redis 丢失后可补回待执行计划，sending 状态按租约与证据处理，不直接盲目重发。
-6. 跨应用越权、未授权目标、重复回调与明文凭证日志均有防护验证。
-7. 一个镜像无需外部数据服务即可启动，重建容器后应用、密钥与投递数据从持久化卷恢复。
-8. 新建应用未带 Bearer Key 的发送返回 401；显式切换为 none 后仅发送入口允许匿名，查询和管理接口仍需认证。
+6. 无效或已撤销 Key、后台未登录、重复回调与明文凭证日志均有防护验证。
+7. 一个镜像无需外部数据服务即可启动，重建容器后设置、密钥与投递数据从持久化卷恢复。
+8. 默认未带 Bearer Key 的发送与查询返回 401；系统关闭鉴权后两者允许免 Key 调用，管理接口始终需登录。
 
 CI 执行依赖安装、类型检查、Lint、单元与集成测试、前端构建和 OpenAPI 客户端同步检查。发布镜像带 Git 提交标识；日志与文档中区分设计目标、模拟渠道测试和真实平台验证。
 
@@ -669,7 +668,7 @@ CI 执行依赖安装、类型检查、Lint、单元与集成测试、前端构�
 
 | 阶段 | 交付内容 | 完成标准 |
 | --- | --- | --- |
-| A：工程与配置基础 | Monorepo、前后端模块、登录、应用与渠道配置、OpenAPI | 开发与容器环境可启动，权限和配置流程可运行 |
+| A：工程与配置基础 | Monorepo、前后端模块、登录、API Key 与渠道配置、OpenAPI | 开发与容器环境可启动，权限和配置流程可运行 |
 | B：第一条可靠链路 | 企业微信群 Webhook、通知与投递表、Outbox、幂等、状态机 | 成功、明确失败、超时未知与故障补偿均有验证 |
 | C：多渠道与控制台 | 飞书群机器人、钉钉企业机器人、模板版本、主题路由、实例限流、日志 | 同一 API 驱动多渠道，目标级结果和人工操作可追踪 |
 | D：交互与连接 | 企业微信智能机器人、飞书应用、钉钉 Stream、Inbox 和租约路由 | 连接恢复、事件去重、权限与回执可验证 |

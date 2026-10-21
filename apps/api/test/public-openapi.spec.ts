@@ -7,20 +7,17 @@ describe('public developer contract', () => {
   const published = publicOpenApi(full);
   it('publishes only the four notification endpoints and Bearer auth', () => {
     expect(Object.keys(published.paths)).toHaveLength(4);
-    expect(Object.keys(published.paths).every((p) => p.startsWith('/api/v1/apps/'))).toBe(true);
+    expect(Object.keys(published.paths).every((p) => p.startsWith('/api/v1/'))).toBe(true);
     expect(Object.keys(published.components!.securitySchemes!)).toEqual(['bearer']);
-    expect(published.paths['/api/v1/apps/{appKey}/notifications']!.post!.security).toEqual([
-      { bearer: [] },
-      {},
-    ]);
+    expect(published.paths['/api/v1/notifications']!.post!.security).toEqual([{ bearer: [] }, {}]);
     for (const path of Object.values(published.paths)) {
-      if (path?.get) expect(path.get.security).toEqual([{ bearer: [] }]);
+      if (path?.get) expect(path.get.security).toEqual([{ bearer: [] }, {}]);
     }
   });
   it('keeps every referenced schema, without exposing private or unused models', () => {
     const schemas = published.components!.schemas!;
     expect(schemas.NotificationDto).toBeDefined();
-    for (const name of ['SetupDto', 'LoginDto', 'PasswordDto', 'ChannelDto', 'ApplicationDto'])
+    for (const name of ['SetupDto', 'LoginDto', 'PasswordDto', 'ChannelDto', 'ApiKeyDto'])
       expect(schemas[name]).toBeUndefined();
     const visit = (value: unknown): void => {
       if (!value || typeof value !== 'object') return;
@@ -32,19 +29,19 @@ describe('public developer contract', () => {
       Object.values(value).forEach(visit);
     };
     visit(published);
-    expect(full.paths['/api/admin/applications']).toBeDefined();
+    expect(full.paths['/api/admin/api-keys']).toBeDefined();
     expect(full.components!.schemas!.LoginDto).toBeDefined();
     expect(JSON.stringify(published)).not.toContain('"event"');
   });
-  it('requires the JSON idempotency key and documents response envelopes', () => {
+  it('makes the JSON idempotency key optional and documents response envelopes', () => {
     expect(published.components!.schemas!.TargetDto).toMatchObject({
       properties: { ids: { items: { type: 'string', pattern: '^ch_[0-9a-f]{12}$' } } },
     });
-    const post = published.paths['/api/v1/apps/{appKey}/notifications']!.post!;
+    const post = published.paths['/api/v1/notifications']!.post!;
     const headers = post.parameters!.filter((p) => 'in' in p && p.in === 'header');
     expect(headers).toHaveLength(0);
     expect(published.components!.schemas!.NotificationDto).toMatchObject({
-      required: expect.arrayContaining(['idempotency_key']),
+      required: expect.not.arrayContaining(['idempotency_key']),
     });
     expect(post.responses['202']).toMatchObject({
       content: {
@@ -62,10 +59,13 @@ describe('public developer contract', () => {
       const examples = body.content['application/json']!.examples!;
       expect(examples.text).toMatchObject({
         value: {
-          idempotency_key: expect.any(String),
           target: { ids: ['ch_a7c92e4f6b18'] },
           message: { text: '订单支付成功。' },
         },
+      });
+      expect(examples.text).not.toMatchObject({ value: { idempotency_key: expect.anything() } });
+      expect(examples.deduplicated).toMatchObject({
+        value: { idempotency_key: expect.any(String) },
       });
       expect(examples.template).toMatchObject({ value: { template: { key: 'order_paid' } } });
     }

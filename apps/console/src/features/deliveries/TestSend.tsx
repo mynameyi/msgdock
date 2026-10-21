@@ -1,16 +1,12 @@
 import { App, Alert, Form, Input, Modal, Select } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getApplications } from '../applications/api';
 import { getTargets } from '../channels/api';
 import { testSend } from './api';
 export function TestSend({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [form] = Form.useForm();
   const { message } = App.useApp();
   const cache = useQueryClient();
-  const apps = useQuery({ queryKey: ['applications'], queryFn: getApplications, enabled: open });
   const targets = useQuery({ queryKey: ['targets'], queryFn: getTargets, enabled: open });
-  const applicationId = Form.useWatch('applicationId', form);
-  const application = apps.data?.find((a) => a.id === applicationId);
   const send = useMutation({
     mutationFn: testSend,
     onSuccess: async () => {
@@ -46,28 +42,15 @@ export function TestSend({ open, onClose }: { open: boolean; onClose: () => void
         initialValues={{ text: '这是一条来自 MsgDock（信港）的测试通知。' }}
       >
         <Form.Item
-          label="接入应用"
-          name="applicationId"
-          rules={[{ required: true, message: '请选择应用' }]}
-        >
-          <Select
-            placeholder="选择已启用的应用"
-            options={apps.data
-              ?.filter((a) => a.enabled)
-              .map((a) => ({ label: a.name, value: a.id }))}
-            onChange={() => form.setFieldValue('targetIds', [])}
-          />
-        </Form.Item>
-        <Form.Item
-          label="目标"
+          label="渠道"
           name="targetIds"
-          rules={[{ required: true, message: '请选择授权目标' }]}
+          rules={[{ required: true, message: '请选择渠道' }]}
         >
           <Select
             mode="multiple"
-            placeholder="先选择应用，再选择其授权目标"
+            placeholder="选择接收通知的渠道"
             options={targets.data
-              ?.filter((t) => application?.allowedTargetIds.includes(t.id) && t.channel.enabled)
+              ?.filter((t) => t.channel.enabled)
               .map((t) => ({
                 label: `${t.channel.name} · ${t.channel.shortId}`,
                 value: t.channel.shortId,

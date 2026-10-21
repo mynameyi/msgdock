@@ -56,7 +56,7 @@ export function ChannelsPage() {
           cache.invalidateQueries({ queryKey: [key] }),
         ),
       );
-      message.success('渠道已保存，请授权给接入应用后发送测试');
+      message.success('渠道已保存，可以发送测试通知');
     },
   });
   function edit(c: Channel | null) {

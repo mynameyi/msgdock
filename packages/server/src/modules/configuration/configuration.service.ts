@@ -5,13 +5,14 @@ import { channelRegistry } from '@msgdock/channels';
 import { Prisma } from '@msgdock/database';
 import { SecretService, randomSecret, sha256 } from '../../infrastructure';
 import { ConfigurationRepository } from './configuration.repository';
+import { apiKeyPublicSelect, readApiSettings } from '../notifications/api-access';
 
-export interface ApplicationInput {
+export interface ApiKeyInput {
   name: string;
-  key: string;
-  authMode: 'api_key' | 'none';
-  allowedTargetIds: string[];
   enabled: boolean;
+}
+export interface ApiSettingsInput {
+  authEnabled: boolean;
   perMinuteLimit: number;
 }
 export interface ChannelInput {
@@ -32,59 +33,76 @@ export class ConfigurationService {
   private get db() {
     return this.repository.db;
   }
-  async applications() {
-    return this.db.application.findMany({
+  async apiKeys() {
+    const records = await this.db.apiKey.findMany({
       orderBy: { createdAt: 'desc' },
-      include: {
-        keys: { where: { revokedAt: null }, select: { id: true, prefix: true, createdAt: true } },
-      },
+      select: { ...apiKeyPublicSelect, secret: true },
+    });
+    return records.map(({ secret, ...record }) => ({
+      ...record,
+      key: secret ? this.secrets.decrypt<string>(secret) : null,
+    }));
+  }
+  apiSettings() {
+    return readApiSettings(this.db);
+  }
+  async saveApiSettings(input: ApiSettingsInput, actor: string) {
+    return this.db.$transaction(async (tx) => {
+      const settings = await tx.apiSettings.upsert({
+        where: { id: 'default' },
+        create: { id: 'default', ...input },
+        update: input,
+      });
+      await tx.audit.create({
+        data: { actor, action: 'api_settings.save', resource: 'default', details: { ...input } },
+      });
+      return settings;
     });
   }
-  async saveApplication(input: ApplicationInput, actor: string, id?: string) {
-    if (!(await this.repository.targetsExist(input.allowedTargetIds)))
-      throw new ServiceError('TARGET_UNAVAILABLE', '目标不存在');
-    const record = await this.db.$transaction(async (tx) => {
-      const app = id
-        ? await tx.application.update({ where: { id }, data: input })
-        : await tx.application.create({ data: input });
+  async createKey(input: ApiKeyInput, actor: string) {
+    const key = 'md_' + randomSecret();
+    return this.db.$transaction(async (tx) => {
+      const record = await tx.apiKey.create({
+        data: {
+          ...input,
+          hash: sha256(key),
+          secret: this.secrets.encrypt(key),
+          prefix: key.slice(0, 11),
+        },
+        select: apiKeyPublicSelect,
+      });
+      await tx.audit.create({
+        data: { actor, action: 'api_key.create', resource: record.id, details: {} },
+      });
+      return { ...record, key };
+    });
+  }
+  async updateKey(id: string, input: ApiKeyInput, actor: string) {
+    return this.db.$transaction(async (tx) => {
+      const record = await tx.apiKey.update({
+        where: { id },
+        data: input,
+        select: apiKeyPublicSelect,
+      });
       await tx.audit.create({
         data: {
           actor,
-          action: 'application.save',
-          resource: app.id,
-          details: { authMode: input.authMode, enabled: input.enabled },
+          action: 'api_key.update',
+          resource: id,
+          details: { enabled: input.enabled },
         },
       });
-      return app;
+      return record;
     });
-    return record;
   }
-  async createKey(id: string, actor: string) {
-    const app = await this.db.application.findUnique({ where: { id } });
-    if (!app) throw new ServiceError('APPLICATION_NOT_FOUND');
-    const key = `md_${randomSecret()}`;
-    const record = await this.db.$transaction(async (tx) => {
-      const created = await tx.apiKey.create({
-        data: { applicationId: id, hash: sha256(key), prefix: key.slice(0, 11) },
-      });
+  async revokeKey(id: string, actor: string) {
+    return this.db.$transaction(async (tx) => {
+      await tx.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
       await tx.audit.create({
-        data: { actor, action: 'api_key.create', resource: id, details: { keyId: created.id } },
+        data: { actor, action: 'api_key.revoke', resource: id, details: {} },
       });
-      return created;
+      return { ok: true };
     });
-    return { id: record.id, key };
-  }
-  async revokeKey(id: string, keyId: string, actor: string) {
-    await this.db.$transaction(async (tx) => {
-      await tx.apiKey.updateMany({
-        where: { id: keyId, applicationId: id },
-        data: { revokedAt: new Date() },
-      });
-      await tx.audit.create({
-        data: { actor, action: 'api_key.revoke', resource: id, details: { keyId } },
-      });
-    });
-    return { ok: true };
   }
   async channels() {
     return this.db.channel.findMany({

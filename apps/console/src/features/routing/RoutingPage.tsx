@@ -31,7 +31,7 @@ export function RoutingPage() {
     <>
       <PageTitle
         title="主题路由"
-        description="用一个业务主题触达多个接收目标，调用时仍受应用目标授权约束。"
+        description="用一个业务主题触达多个已启用的接收渠道。"
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => edit(null)}>
             创建主题

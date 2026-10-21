@@ -138,7 +138,7 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
     if (this.shuttingDown) return;
     const d = await this.db.delivery.findUnique({
       where: { id: job.deliveryId },
-      include: { notification: { include: { application: true } } },
+      include: { notification: { include: { apiKey: true } } },
     });
     if (
       !d ||
@@ -148,14 +148,14 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
     )
       return;
     const channel = await this.db.channel.findUnique({ where: { id: d.channelId } });
-    const app = d.notification.application;
-    if (!channel?.enabled || !app.enabled || !app.allowedTargetIds.includes(d.targetId)) {
+    const key = d.notification.apiKey;
+    if (!channel?.enabled || (d.notification.apiKeyId && (!key?.enabled || key.revokedAt))) {
       await this.db.delivery.updateMany({
         where: { id: d.id, generation: job.generation, status: { in: ['pending', 'retry_wait'] } },
         data: {
           status: 'cancelled',
           lastCode: 'authorization_revoked',
-          lastMessage: '应用或渠道停用，或目标授权被撤回',
+          lastMessage: 'API Key 已停用或撤销，或渠道已停用',
         },
       });
       return;
@@ -237,11 +237,12 @@ export class DeliveryWorkerService implements OnModuleInit, OnModuleDestroy {
         timeoutMs: Number(process.env.MSGDOCK_SEND_TIMEOUT_MS ?? 10000),
         beforeRequest: async () => {
           await this.db.$transaction(async (tx) => {
-            const currentApp = await tx.application.findUnique({ where: { id: app.id } });
+            const currentKey = d.notification.apiKeyId
+              ? await tx.apiKey.findUnique({ where: { id: d.notification.apiKeyId } })
+              : null;
             const currentChannel = await tx.channel.findUnique({ where: { id: channel.id } });
             if (
-              !currentApp?.enabled ||
-              !currentApp.allowedTargetIds.includes(d.targetId) ||
+              (d.notification.apiKeyId && (!currentKey?.enabled || currentKey.revokedAt)) ||
               !currentChannel?.enabled
             )
               throw new Error('Authorization revoked');

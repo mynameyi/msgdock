@@ -8,11 +8,19 @@ let response = await fetch(state.base + '/api/admin/session', {
   headers: { cookie: state.cookie },
 });
 assert.equal(response.status, 200, 'session persisted');
+const keysResponse = await fetch(state.base + '/api/admin/api-keys', {
+  headers: { cookie: state.cookie },
+});
+assert.equal(keysResponse.status, 200);
+const keysAfterRestart = (await keysResponse.json()).data;
+assert.equal(keysAfterRestart.find((k) => k.id === state.apiKeyId).key, state.apiKey);
+assert(!JSON.stringify(keysAfterRestart).includes('"secret"'));
+
 const headers = {
   'Content-Type': 'application/json',
   Authorization: `Bearer ${state.apiKey}`,
 };
-response = await fetch(`${state.base}/api/v1/apps/${state.appKey}/notifications`, {
+response = await fetch(`${state.base}/api/v1/notifications`, {
   method: 'POST',
   headers,
   body: JSON.stringify({
@@ -24,10 +32,9 @@ response = await fetch(`${state.base}/api/v1/apps/${state.appKey}/notifications`
 assert.equal(response.status, 202);
 const notification = (await response.json()).data;
 for (let attempt = 0; attempt < 40; attempt++) {
-  response = await fetch(
-    `${state.base}/api/v1/apps/${state.appKey}/notifications/${notification.notification_id}`,
-    { headers: { Authorization: `Bearer ${state.apiKey}` } },
-  );
+  response = await fetch(`${state.base}/api/v1/notifications/${notification.notification_id}`, {
+    headers: { Authorization: `Bearer ${state.apiKey}` },
+  });
   assert.equal(response.status, 200);
   const notice = (await response.json()).data;
   if (notice.deliveries[0].status === 'accepted') {
@@ -38,6 +45,7 @@ for (let attempt = 0; attempt < 40; attempt++) {
         verified: [
           'persistent session',
           'persistent API Key and authorization',
+          'complete API key readable after restart',
           'credential decryption after restart',
           'queue and worker resume',
           'single platform acceptance',

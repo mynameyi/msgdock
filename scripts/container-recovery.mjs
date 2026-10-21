@@ -11,10 +11,10 @@ const publicHeaders = {
   Authorization: `Bearer ${state.apiKey}`,
   'Content-Type': 'application/json',
 };
-async function notice() {
-  const response = await fetch(`${state.base}/api/v1/apps/${state.appKey}/notifications`, {
+async function notice(authorization = publicHeaders.Authorization) {
+  const response = await fetch(`${state.base}/api/v1/notifications`, {
     method: 'POST',
-    headers: publicHeaders,
+    headers: { ...publicHeaders, Authorization: authorization },
     body: JSON.stringify({
       idempotency_key: randomUUID(),
       target: { type: 'targets', ids: [state.channelShortId] },
@@ -23,15 +23,14 @@ async function notice() {
   });
   assert.equal(response.status, 202);
   const data = (await response.json()).data;
-  const result = await fetch(
-    `${state.base}/api/v1/apps/${state.appKey}/notifications/${data.notification_id}`,
-    { headers: publicHeaders },
-  );
+  const result = await fetch(`${state.base}/api/v1/notifications/${data.notification_id}`, {
+    headers: publicHeaders,
+  });
   return { id: data.notification_id, delivery: (await result.json()).data.deliveries[0] };
 }
-async function deferred() {
+async function deferred(authorization) {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const data = await notice();
+    const data = await notice(authorization);
     assert(/^[a-f0-9-]{36}$/.test(data.delivery.id));
     const sql = `UPDATE "Delivery" SET "nextAttemptAt"=(now() AT TIME ZONE 'UTC')+interval '8 seconds' WHERE id='${data.delivery.id}' AND status='pending' AND "attemptCount"=0 RETURNING id;`;
     const result = execFileSync(
@@ -47,10 +46,9 @@ const recover = await deferred();
 execFileSync('docker', ['exec', container, 'redis-cli', 'FLUSHALL'], { stdio: 'pipe' });
 let recovered = false;
 for (let n = 0; n < 50; n++) {
-  const response = await fetch(
-    `${state.base}/api/v1/apps/${state.appKey}/notifications/${recover.id}`,
-    { headers: publicHeaders },
-  );
+  const response = await fetch(`${state.base}/api/v1/notifications/${recover.id}`, {
+    headers: publicHeaders,
+  });
   const data = (await response.json()).data;
   if (data.deliveries[0].status === 'accepted') {
     assert.equal(data.deliveries[0].attemptCount, 1);
@@ -67,10 +65,9 @@ const cancelResponse = await fetch(
 );
 assert.equal(cancelResponse.status, 201);
 await new Promise((r) => setTimeout(r, 9000));
-const response = await fetch(
-  `${state.base}/api/v1/apps/${state.appKey}/notifications/${cancelled.id}`,
-  { headers: publicHeaders },
-);
+const response = await fetch(`${state.base}/api/v1/notifications/${cancelled.id}`, {
+  headers: publicHeaders,
+});
 const data = (await response.json()).data;
 assert.equal(data.deliveries[0].status, 'cancelled');
 assert.equal(data.deliveries[0].attemptCount, 0);
@@ -94,10 +91,9 @@ execFileSync(
 );
 let versionRejected = false;
 for (let n = 0; n < 40; n++) {
-  const result = await fetch(
-    `${state.base}/api/v1/apps/${state.appKey}/notifications/${unavailable.id}`,
-    { headers: publicHeaders },
-  );
+  const result = await fetch(`${state.base}/api/v1/notifications/${unavailable.id}`, {
+    headers: publicHeaders,
+  });
   const notice = (await result.json()).data;
   if (notice.deliveries[0].status === 'failed') {
     assert.equal(notice.deliveries[0].error.code, 'CHANNEL_PLUGIN_UNAVAILABLE');
@@ -122,6 +118,53 @@ const replay = await fetch(
   },
 );
 assert.equal(replay.status, 400);
+const adminHeaders = {
+  cookie: state.cookie,
+  'x-csrf-token': state.csrf,
+  'content-type': 'application/json',
+};
+const keyResponse = await fetch(state.base + '/api/admin/api-keys', {
+  method: 'POST',
+  headers: adminHeaders,
+  body: JSON.stringify({ name: '队列撤销验证' }),
+});
+assert.equal(keyResponse.status, 201);
+const transientKey = (await keyResponse.json()).data;
+const keyCancelled = await deferred('Bearer ' + transientKey.key);
+const revoked = await fetch(state.base + '/api/admin/api-keys/' + transientKey.id + '/revoke', {
+  method: 'POST',
+  headers: adminHeaders,
+  body: '{}',
+});
+assert.equal(revoked.status, 201);
+let revokedBeforeSend = false;
+for (let n = 0; n < 50; n++) {
+  const response = await fetch(state.base + '/api/v1/notifications/' + keyCancelled.id, {
+    headers: publicHeaders,
+  });
+  assert.equal(response.status, 200);
+  const delivery = (await response.json()).data.deliveries[0];
+  if (delivery.status === 'cancelled') {
+    assert.equal(delivery.attemptCount, 0);
+    revokedBeforeSend = true;
+    break;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 300));
+}
+assert(
+  revokedBeforeSend,
+  'Revoked credentials must cancel a queued delivery before platform dispatch',
+);
+const deniedReplay = await fetch(
+  state.base + '/api/admin/deliveries/' + keyCancelled.delivery.id + '/replays',
+  {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ reason: '验证已撤销 Key 的历史投递', confirmed: true }),
+  },
+);
+assert.equal(deniedReplay.status, 409);
+assert.equal((await deniedReplay.json()).code, 'DELIVERY_STATE_CONFLICT');
 console.log(
   JSON.stringify({
     ok: true,
@@ -132,6 +175,8 @@ console.log(
       'cancelled generation does not send',
       'missing pinned plugin fails without a platform attempt',
       'replay never falls back to a different plugin version',
+      'revoking a key cancels queued delivery before any platform attempt',
+      'replay with a revoked source key reports conflict instead of invalidating admin login',
     ],
   }),
 );

@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { ConfigurationService } from '@msgdock/server';
-import { ApplicationDto, ChannelDto, TemplateDto, TopicDto } from './dto';
+import { ApiKeyDto, ApiSettingsDto, ChannelDto, TemplateDto, TopicDto } from './dto';
 import { AdminRequest, SessionGuard } from './security';
 @ApiTags('配置')
 @ApiCookieAuth()
@@ -19,31 +19,30 @@ import { AdminRequest, SessionGuard } from './security';
 @Controller('api/admin')
 export class ConfigurationController {
   constructor(private readonly service: ConfigurationService) {}
-  @Get('applications') applications() {
-    return this.service.applications();
+  @Get('api-keys') apiKeys() {
+    return this.service.apiKeys();
   }
-  @Post('applications') createApplication(@Body() body: ApplicationDto, @Req() req: AdminRequest) {
-    return this.service.saveApplication(body, req.admin.username);
+  @Post('api-keys') createKey(@Body() body: ApiKeyDto, @Req() req: AdminRequest) {
+    return this.service.createKey(body, req.admin.username);
   }
-  @Put('applications/:id') updateApplication(
+  @Put('api-keys/:id') updateKey(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: ApplicationDto,
+    @Body() body: ApiKeyDto,
     @Req() req: AdminRequest,
   ) {
-    return this.service.saveApplication(body, req.admin.username, id);
+    return this.service.updateKey(id, body, req.admin.username);
   }
-  @Post('applications/:id/keys') createKey(
+  @Post('api-keys/:id/revoke') revokeKey(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: AdminRequest,
   ) {
-    return this.service.createKey(id, req.admin.username);
+    return this.service.revokeKey(id, req.admin.username);
   }
-  @Post('applications/:id/keys/:keyId/revoke') revokeKey(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('keyId', ParseUUIDPipe) keyId: string,
-    @Req() req: AdminRequest,
-  ) {
-    return this.service.revokeKey(id, keyId, req.admin.username);
+  @Get('api-settings') apiSettings() {
+    return this.service.apiSettings();
+  }
+  @Put('api-settings') saveApiSettings(@Body() body: ApiSettingsDto, @Req() req: AdminRequest) {
+    return this.service.saveApiSettings(body, req.admin.username);
   }
   @Get('channels') channels() {
     return this.service.channels();

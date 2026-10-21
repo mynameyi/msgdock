@@ -7,7 +7,7 @@ import { NotificationsController } from '../src/http/notifications.controller';
 import { configureResponseContract, errorResponse } from '../src/http/response-contract';
 
 const service = {
-  authenticate: jest.fn(async () => ({ id: 'app-id' })),
+  authenticate: jest.fn(async () => ({ apiKeyId: 'key-id' })),
   accept: jest.fn(async () => ({
     notification_id: 'notice-id',
     status: 'accepted_for_processing',
@@ -33,7 +33,7 @@ class FixtureModule {}
 
 describe('HTTP response and request contract', () => {
   let app: NestFastifyApplication;
-  const url = '/api/v1/apps/order-service/notifications';
+  const url = '/api/v1/notifications';
   const body = {
     idempotency_key: 'business-event-001',
     target: { type: 'targets', ids: ['ch_a7c92e4f6b18'] },
@@ -69,16 +69,25 @@ describe('HTTP response and request contract', () => {
       request_id: expect.any(String),
     });
     const { idempotency_key, ...input } = body;
-    expect(service.accept).toHaveBeenCalledWith('app-id', input, idempotency_key);
+    expect(service.accept).toHaveBeenCalledWith('key-id', input, idempotency_key);
     expect(response.headers['x-request-id']).toBe(response.json().request_id);
     expect(response.json().notification_id).toBeUndefined();
   });
-  it('rejects a header-only key and invalid JSON values with structured validation details', async () => {
+  it('accepts requests without a JSON key and ignores the old header', async () => {
+    const { idempotency_key: _key, ...input } = body;
+    for (const headers of [{}, { 'idempotency-key': 'legacy-key' }]) {
+      const response = await app.inject({ method: 'POST', url, payload: input, headers });
+      expect(response.statusCode).toBe(202);
+      expect(service.accept).toHaveBeenLastCalledWith('key-id', input, undefined);
+    }
+  });
+  it('rejects invalid provided JSON keys with structured validation details', async () => {
     const { idempotency_key: _key, ...input } = body;
     for (const payload of [
-      input,
+      { ...input, idempotency_key: null },
       { ...input, idempotency_key: '' },
       { ...input, idempotency_key: 12 },
+      { ...input, idempotency_key: [] },
       { ...input, idempotency_key: 'with space' },
       { ...input, idempotency_key: 'x'.repeat(201) },
     ]) {

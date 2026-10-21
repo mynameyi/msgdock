@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Badge, Button, Card, Empty, Segmented, Select, Space, Table, Tag } from 'antd';
+import { Alert, Badge, Button, Card, Empty, Segmented, Space, Table, Tag } from 'antd';
 import {
   ArrowRightOutlined,
   ArrowUpOutlined,
@@ -23,22 +23,20 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 import { getOverview } from './api';
-import { getApplications } from '../applications/api';
+import { getApiSettings } from '../system/api';
 import { TestSend } from '../deliveries/TestSend';
 import { PageTitle, QueryState, StatusTag, number } from '../../shared/ui';
 import { Delivery } from '../../shared/api';
 import { getChannelPlugins } from '../channels/api';
 export function OverviewPage() {
   const query = useQuery({ queryKey: ['overview'], queryFn: getOverview, refetchInterval: 10000 });
-  const apps = useQuery({ queryKey: ['applications'], queryFn: getApplications });
+  const settings = useQuery({ queryKey: ['api-settings'], queryFn: getApiSettings });
   const plugins = useQuery({ queryKey: ['channel-plugins'], queryFn: getChannelPlugins });
   const channelNames = Object.fromEntries((plugins.data ?? []).map((p) => [p.id, p.name]));
   const [range, setRange] = useState('今日');
   const [test, setTest] = useState(false);
-  const [selected, setSelected] = useState<string>();
   const navigate = useNavigate();
   const data = query.data;
-  const app = apps.data?.find((a) => a.id === selected) ?? apps.data?.[0];
   const counts = data?.counts ?? {};
   const pending = data?.pendingCount ?? 0;
   const attention = (counts.failed ?? 0) + (data?.unknownCount ?? 0);
@@ -49,12 +47,17 @@ export function OverviewPage() {
       : (data?.days ?? []).map((p) => ({ label: dayjs(p.time).format('MM/DD'), count: p.count }));
   const columns = [
     {
-      title: '接入应用',
-      key: 'application',
+      title: '调用来源',
+      key: 'source',
       render: (_: unknown, d: Delivery) => (
         <div>
-          <b>{d.notification.application.name}</b>
-          <span className="cell-secondary">{d.notification.application.key}</span>
+          <b>
+            {d.notification.apiKey?.name ??
+              (d.notification.idempotencyScope === 'console' ? '控制台测试' : '匿名 / 历史通知')}
+          </b>
+          <span className="cell-secondary">
+            {d.notification.apiKey?.prefix ? d.notification.apiKey.prefix + '…' : ''}
+          </span>
         </div>
       ),
     },
@@ -152,7 +155,7 @@ export function OverviewPage() {
             type="info"
             showIcon
             title="欢迎使用信港"
-            description="添加渠道 → 创建接入应用并授权目标 → 生成 API Key → 发送第一条通知。"
+            description="添加渠道 → 创建 API Key（开启鉴权时）→ 发送第一条通知。"
             action={<Button onClick={() => navigate('/console/channels')}>添加渠道</Button>}
           />
         )}
@@ -274,31 +277,19 @@ export function OverviewPage() {
           <Card
             title="API 接入"
             extra={
-              app ? (
-                <Tag color={app.authMode === 'none' ? 'gold' : 'green'}>
-                  {app.authMode === 'none' ? '非鉴权模式' : '鉴权已开启'}
-                </Tag>
-              ) : null
+              <Tag color={settings.data?.authEnabled === false ? 'gold' : 'green'}>
+                {settings.data?.authEnabled === false ? '鉴权已关闭' : 'API Key 鉴权'}
+              </Tag>
             }
           >
-            <div className="api-select">
-              <span>接入应用</span>
-              <Select
-                value={app?.id}
-                placeholder="请先创建应用"
-                onChange={setSelected}
-                options={apps.data?.map((a) => ({ label: a.name, value: a.id }))}
-                variant="borderless"
-              />
-            </div>
-            <pre className="api-code">{`POST /api/v1/apps/${app?.key ?? '{app_key}'}/notifications\n${app?.authMode === 'none' ? '' : 'Authorization: Bearer <API_KEY>\n'}Content-Type: application/json\n\n{ "idempotency_key": "<UNIQUE_EVENT_ID>", ... }`}</pre>
+            <pre className="api-code">{`POST /api/v1/notifications\n${settings.data?.authEnabled === false ? '' : 'Authorization: Bearer <API_KEY>\n'}Content-Type: application/json\n\n{ "target": { "type": "targets", "ids": ["<CHANNEL_ID>"] }, "message": { "text": "你好，MsgDock" } }`}</pre>
             <p className="small muted">
-              {app?.authMode === 'none'
-                ? '该应用已显式关闭发送鉴权。查询与后台管理仍需认证。'
-                : '新建应用默认使用 API Key 鉴权；密钥由业务服务端持有。'}
+              {settings.data?.authEnabled === false
+                ? '系统鉴权已关闭，无需 Key 即可发送和查询通知。'
+                : '在 API Key 页面创建密钥；调用时无需应用标识。'}
             </p>
             <div className="panel-footer">
-              <Link to="/console/applications">管理接入应用 ↗</Link>
+              <Link to="/console/api-keys">管理 API Key ↗</Link>
               <Link to="/docs">
                 接口文档 <ArrowRightOutlined />
               </Link>

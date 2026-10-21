@@ -6,7 +6,7 @@ export type Overview = {
   pendingCount: number;
   unknownCount: number;
   channels: Channel[];
-  applications: number;
+  apiKeys: number;
   recent: Delivery[];
   hours: { time: string; count: number }[];
   days: { time: string; count: number }[];

@@ -4,7 +4,7 @@ interface DeliveryRecord {
   lastMessage: string | null;
 }
 const hostCodes: Record<string, string> = {
-  authorization_revoked: 'APPLICATION_ACCESS_REVOKED',
+  authorization_revoked: 'API_ACCESS_REVOKED',
   plugin_unavailable: 'CHANNEL_PLUGIN_UNAVAILABLE',
   config_version_mismatch: 'CHANNEL_CONFIG_VERSION_MISMATCH',
   plugin_protocol_error: 'CHANNEL_PLUGIN_PROTOCOL_ERROR',

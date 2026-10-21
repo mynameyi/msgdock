@@ -41,9 +41,5 @@ export const resolveDelivery = async (id: string, reason: string) =>
       body: { reason, confirmed: true },
     }),
   );
-export const testSend = async (body: {
-  applicationId: string;
-  targetIds: string[];
-  text: string;
-}) =>
+export const testSend = async (body: { targetIds: string[]; text: string }) =>
   unwrap<{ notification_id: string }>(await client.POST('/api/admin/notifications/test', { body }));

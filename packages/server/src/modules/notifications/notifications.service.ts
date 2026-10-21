@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService, RedisService, sha256 } from '../../infrastructure';
 import { renderText, requestHash } from './render';
 import { deliveryView } from '../deliveries/view';
+import { readApiSettings } from './api-access';
 
 export interface NotificationInput {
   target: { type: 'targets' | 'topic'; ids?: string[]; key?: string };
@@ -21,20 +22,24 @@ export class NotificationsService {
     private readonly db: DatabaseService,
     private readonly redis: RedisService,
   ) {}
-  async authenticate(appKey: string, authorization?: string) {
-    const app = await this.db.application.findUnique({ where: { key: appKey } });
-    if (!app || !app.enabled) throw new ServiceError('APPLICATION_UNAVAILABLE');
+  async authenticate(authorization?: string) {
     if (authorization !== undefined) {
       const match = /^Bearer (md_[A-Za-z0-9_-]{43})$/i.exec(authorization);
       const key = match
         ? await this.db.apiKey.findUnique({ where: { hash: sha256(match[1]!) } })
         : null;
-      if (!key || key.revokedAt) throw new ServiceError('API_KEY_INVALID');
-      if (key.applicationId !== app.id) throw new ServiceError('API_KEY_APP_MISMATCH');
-    } else if (app.authMode !== 'none') throw new ServiceError('API_KEY_REQUIRED');
-    return app;
+      if (!key || !key.enabled || key.revokedAt) throw new ServiceError('API_KEY_INVALID');
+      return { apiKeyId: key.id };
+    }
+    if ((await readApiSettings(this.db)).authEnabled) throw new ServiceError('API_KEY_REQUIRED');
+    return { apiKeyId: null };
   }
-  async accept(appId: string, input: NotificationInput, idempotencyKey: string) {
+  async accept(
+    apiKeyId: string | null,
+    input: NotificationInput,
+    idempotencyKey: string = randomUUID(),
+    origin: 'api' | 'console' = 'api',
+  ) {
     if (!/^[\x21-\x7E]{1,200}$/.test(idempotencyKey))
       throw new ServiceError('IDEMPOTENCY_KEY_INVALID');
     if (
@@ -45,17 +50,23 @@ export class NotificationsService {
         'INVALID_ARGUMENT',
         'target.ids 仅接受渠道短 ID（ch_ 加 12 位小写十六进制字符）',
       );
-    const app = await this.db.application.findUnique({ where: { id: appId } });
-    if (!app || !app.enabled) throw new ServiceError('APPLICATION_DISABLED');
-    if (!(await this.redis.limit(`app-limit:${app.id}`, app.perMinuteLimit)))
-      throw new ServiceError('RATE_LIMITED', '应用发送频率超限');
+    if (apiKeyId) {
+      const key = await this.db.apiKey.findUnique({ where: { id: apiKeyId } });
+      if (!key || !key.enabled || key.revokedAt) throw new ServiceError('API_KEY_INVALID');
+    }
+    const settings = await readApiSettings(this.db);
+    if (origin === 'api' && !apiKeyId && settings.authEnabled)
+      throw new ServiceError('API_KEY_REQUIRED');
+    if (!(await this.redis.limit('api-send-limit', settings.perMinuteLimit)))
+      throw new ServiceError('RATE_LIMITED');
+    const idempotencyScope = apiKeyId ?? (origin === 'console' ? 'console' : 'anonymous');
     const hash = requestHash({
       ...input,
       expires_in: input.expires_in ?? 3600,
       variables: input.variables ?? {},
     });
     const existing = await this.db.notification.findUnique({
-      where: { applicationId_idempotencyKey: { applicationId: app.id, idempotencyKey } },
+      where: { idempotencyScope_idempotencyKey: { idempotencyScope, idempotencyKey } },
       include: { _count: { select: { deliveries: true } } },
     });
     if (existing) {
@@ -84,14 +95,12 @@ export class NotificationsService {
       ids = refs.map((ref) => {
         const matches = resolvedTargets.filter((target) => target.channel.shortId === ref);
         // Never select a default recipient when a channel has ambiguous targets.
-        if (matches.length !== 1) throw new ServiceError('TARGET_NOT_AUTHORIZED');
+        if (matches.length !== 1) throw new ServiceError('TARGET_UNAVAILABLE');
         return matches[0]!.id;
       });
     }
     ids = [...new Set(ids)];
     if (!ids.length || ids.length > 500) throw new ServiceError('TARGETS_INVALID');
-    if (ids.some((id) => !app.allowedTargetIds.includes(id)))
-      throw new ServiceError('TARGET_NOT_AUTHORIZED');
     const targets = await this.db.target.findMany({
       where: { id: { in: ids } },
       include: { channel: true },
@@ -136,7 +145,8 @@ export class NotificationsService {
       return await this.db.$transaction(async (tx) => {
         const notice = await tx.notification.create({
           data: {
-            applicationId: app.id,
+            apiKeyId,
+            idempotencyScope,
             idempotencyKey,
             requestHash: hash,
             expiresAt,
@@ -174,7 +184,7 @@ export class NotificationsService {
     } catch (error) {
       if ((error as { code?: string }).code === 'P2002') {
         const notice = await this.db.notification.findUnique({
-          where: { applicationId_idempotencyKey: { applicationId: app.id, idempotencyKey } },
+          where: { idempotencyScope_idempotencyKey: { idempotencyScope, idempotencyKey } },
           include: { _count: { select: { deliveries: true } } },
         });
         if (notice?.requestHash === hash)
@@ -189,9 +199,9 @@ export class NotificationsService {
       throw error;
     }
   }
-  async query(appId: string, id: string) {
+  async query(id: string) {
     const notification = await this.db.notification.findFirst({
-      where: { id, applicationId: appId },
+      where: { id },
       select: {
         id: true,
         createdAt: true,
@@ -211,10 +221,10 @@ export class NotificationsService {
     if (!notification) throw new ServiceError('NOTIFICATION_NOT_FOUND');
     return { ...notification, deliveries: notification.deliveries.map(deliveryView) };
   }
-  async queryDeliveries(appId: string, id: string, cursor?: string) {
-    await this.query(appId, id);
+  async queryDeliveries(id: string, cursor?: string) {
+    await this.query(id);
     const items = await this.db.delivery.findMany({
-      where: { notificationId: id, notification: { applicationId: appId } },
+      where: { notificationId: id },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 51,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -233,9 +243,9 @@ export class NotificationsService {
       nextCursor: items.length > 50 ? items[49]!.id : null,
     };
   }
-  async queryDelivery(appId: string, id: string) {
+  async queryDelivery(id: string) {
     const delivery = await this.db.delivery.findFirst({
-      where: { id, notification: { applicationId: appId } },
+      where: { id },
       select: {
         id: true,
         notificationId: true,
@@ -250,11 +260,12 @@ export class NotificationsService {
     if (!delivery) throw new ServiceError('DELIVERY_NOT_FOUND');
     return deliveryView(delivery);
   }
-  async adminTest(applicationId: string, targetIds: string[], text: string, actor: string) {
+  async adminTest(targetIds: string[], text: string, actor: string) {
     const result = await this.accept(
-      applicationId,
+      null,
       { target: { type: 'targets', ids: targetIds }, message: { text } },
       `test-${randomUUID()}`,
+      'console',
     );
     await this.db.audit.create({
       data: { actor, action: 'notification.test', resource: result.notification_id, details: {} },

@@ -8,13 +8,22 @@ import {
   Descriptions,
   Form,
   Input,
+  InputNumber,
+  Switch,
   Modal,
   Table,
   Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { getSystem, getAudit, changePassword } from './api';
+import {
+  getSystem,
+  getAudit,
+  changePassword,
+  getApiSettings,
+  saveApiSettings,
+  ApiSettings,
+} from './api';
 import { PageTitle, QueryState } from '../../shared/ui';
 export function SystemPage() {
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -72,6 +81,7 @@ export function SystemPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <ApiAccessSettings />
       <QueryState loading={system.isLoading} error={system.error} retry={system.refetch}>
         <Card title="实例信息">
           <Descriptions
@@ -155,5 +165,53 @@ export function SystemPage() {
         />
       </Card>
     </>
+  );
+}
+
+function ApiAccessSettings() {
+  const query = useQuery({ queryKey: ['api-settings'], queryFn: getApiSettings });
+  const cache = useQueryClient();
+  const { message } = App.useApp();
+  const save = useMutation({
+    mutationFn: saveApiSettings,
+    onSuccess: async () => {
+      await cache.invalidateQueries({ queryKey: ['api-settings'] });
+      message.success('API 鉴权设置已保存');
+    },
+  });
+  return (
+    <Card title="通知 API 鉴权" className="mb16">
+      <QueryState loading={query.isLoading} error={query.error} retry={query.refetch}>
+        {query.data && (
+          <Form<ApiSettings>
+            key={JSON.stringify(query.data)}
+            layout="vertical"
+            initialValues={query.data}
+            onFinish={(v) => save.mutate(v)}
+          >
+            <Form.Item
+              name="authEnabled"
+              label="开启 API Key 鉴权"
+              valuePropName="checked"
+              extra="默认开启：发送和查询需要 Authorization: Bearer <API_KEY>。关闭后不提供 Key 也可调用通知接口。此开关不影响管理员登录。"
+            >
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              name="perMinuteLimit"
+              label="实例每分钟发送请求上限"
+              extra="所有 Key 和匿名请求共用此额度；渠道插件仍遵守各平台的发送频率限制。"
+              rules={[{ required: true }]}
+            >
+              <InputNumber min={1} max={10000} />
+            </Form.Item>
+            {save.error && <Alert className="mb16" type="error" title={save.error.message} />}
+            <Button type="primary" htmlType="submit" loading={save.isPending}>
+              保存 API 设置
+            </Button>
+          </Form>
+        )}
+      </QueryState>
+    </Card>
   );
 }

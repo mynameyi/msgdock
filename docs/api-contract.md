@@ -2,24 +2,25 @@
 
 ## 请求与幂等
 
-业务通知使用 `POST /api/v1/apps/{appKey}/notifications`，请求类型为 `application/json`。默认通过 HTTP 请求头 `Authorization: Bearer <API_KEY>` 鉴权；显式关闭应用发送鉴权时可以省略该头，结果查询始终鉴权。
+业务通知使用 `POST /api/v1/notifications`，请求类型为 `application/json`。默认通过 HTTP 请求头 `Authorization: Bearer <API_KEY>` 鉴权；系统设置关闭鉴权后，发送和查询均可省略该头。无需应用标识；所有有效 Key 具有相同通知权限。详见[API Key 与鉴权](api-authentication.md)。
 
 请求和查询响应不包含 `event` 字段，数据库也不保存该字段。继续提交 `event` 会返回 HTTP 400 / `VALIDATION_ERROR`。
 
 ```json
 {
-  "idempotency_key": "order-paid-20261021-001",
   "target": { "type": "topic", "key": "finance" },
   "message": { "text": "订单支付成功。" },
   "expires_in": 3600
 }
 ```
 
-`idempotency_key` 为必填字符串，包含 1–200 个可见 ASCII 字符，不含空白。调用方为每个新的业务通知生成唯一值，同一请求重试时复用原值。可使用业务事件 ID，或首次发送前生成并保存的 UUID。
+`idempotency_key` 为可选字符串。省略时，每次请求都创建新通知，即使目标和内容完全相同也会分别发送，`data.idempotency_hit=false`。需要防止重试产生重复通知时，在 JSON 中增加该字段，例如 `"idempotency_key": "order-paid-20261021-001"`。
 
-- 同一应用、相同键与相同内容：返回原通知，`data.idempotency_hit=true`，不创建新的投递计划。
-- 同一应用、相同键与不同内容：返回 HTTP 409 / `IDEMPOTENCY_CONFLICT`。
-- 不同应用分别去重。幂等记录随通知记录保存，当前没有自动过期清理。
+提供时必须包含 1–200 个可见 ASCII 字符，不含空白；`null`、空字符串或其他类型会返回 HTTP 400 / VALIDATION_ERROR。调用方为每次新的业务通知生成唯一值，同一请求重试时复用原值。可使用业务事件 ID，或首次发送前生成并保存的 UUID。
+
+- 提供键时，同一 API Key、相同幂等键与相同内容：返回原通知，`data.idempotency_hit=true`，不创建新的投递计划。
+- 提供键时，同一 API Key、相同幂等键与不同内容：返回 HTTP 409 / `IDEMPOTENCY_CONFLICT`。
+- 不同 API Key 分别去重；无 Key 的匿名请求共用匿名去重范围。幂等记录随通知记录保存，当前没有自动过期清理。
 - 此字段用于业务去重，不替代鉴权或请求签名防重放。
 
 ## 渠道 ID 与接收目标
@@ -32,9 +33,9 @@
 
 渠道 ID 由系统自动分配，格式为 `ch_` 加 12 位小写十六进制字符，在同一 MsgDock 实例中唯一且不随名称变化。示例 ID 需替换为实际渠道 ID。`target.ids` 仅接受渠道短 ID，重复 ID 只创建一份投递；提交 UUID 或将其混入短 ID 数组均返回 HTTP 400 / `VALIDATION_ERROR`，整个请求不受理。控制台测试发送也使用渠道短 ID。
 
-短 ID 仍需在应用已授权的接收目标范围内；未知或未授权的短 ID 返回 `TARGET_NOT_AUTHORIZED`。它不是 API Key，也不改变 Bearer 鉴权与匿名应用的既有规则。主题 `target.type=topic` 的使用方式不变。相同幂等键重试时保持原始请求内容，避免触发幂等冲突。
+短 ID 不是凭证；目标必须对应已启用的渠道，未知或停用的渠道返回 `TARGET_UNAVAILABLE`。开启鉴权时仍需提供 Bearer Key。主题 `target.type=topic` 的使用方式不变。相同幂等键重试时保持原始请求内容，避免触发幂等冲突。
 
-升级迁移会自动为已有渠道分配短 ID，保留原 UUID、应用授权、主题路由和历史投递快照。
+升级迁移会自动为已有渠道分配短 ID，保留原 UUID、主题路由和历史投递快照。
 
 ## 统一响应
 
@@ -66,12 +67,12 @@ HTTP 202 表示通知已持久化受理，不代表平台已接受消息：
 }
 ```
 
-HTTP 403 表示接口受理失败：
+HTTP 400 表示接口受理失败：
 
 ```json
 {
-  "code": "TARGET_NOT_AUTHORIZED",
-  "message": "应用无权访问目标",
+  "code": "TARGET_UNAVAILABLE",
+  "message": "目标不存在或渠道已停用",
   "data": null,
   "request_id": "req_example"
 }
@@ -115,7 +116,7 @@ HTTP 403 表示接口受理失败：
 | DELIVERY_RESULT_UNKNOWN | 结果不明，先核实再决定是否重发 |
 | DELIVERY_RETRY_PENDING | 等待核心的受控重试 |
 | DELIVERY_EXPIRED | 已超过有效期 |
-| APPLICATION_ACCESS_REVOKED | 应用、渠道或授权已撤销 |
+| API_ACCESS_REVOKED | API Key 或渠道已停用、撤销 |
 | CHANNEL_PLUGIN_UNAVAILABLE | 固定的插件版本不可用 |
 | CHANNEL_CONFIG_VERSION_MISMATCH | 配置版本不匹配 |
 | CHANNEL_PLUGIN_PROTOCOL_ERROR / CHANNEL_PLUGIN_EXECUTION_FAILED | 插件契约或执行准备失败 |
@@ -134,12 +135,11 @@ HTTP 403 表示接口受理失败：
 | 400 | TOPIC_NOT_FOUND / TEMPLATE_NOT_FOUND | 配置有效主题或模板 |
 | 400 | MESSAGE_INVALID / TEMPLATE_SYNTAX_INVALID / TEMPLATE_VARIABLE_INVALID | 修正正文或模板变量 |
 | 400 | CHANNEL_CONFIG_INVALID / CHANNEL_PLUGIN_UNAVAILABLE | 检查插件配置和版本 |
-| 401 | API_KEY_REQUIRED / API_KEY_INVALID / APPLICATION_UNAVAILABLE | 检查应用及 API Key |
+| 401 | API_KEY_REQUIRED / API_KEY_INVALID | 检查 API Key 与系统鉴权设置 |
 | 401 | SESSION_REQUIRED / LOGIN_FAILED / SETUP_TOKEN_INVALID | 检查管理员认证 |
-| 403 | API_KEY_APP_MISMATCH / TARGET_NOT_AUTHORIZED | 检查密钥归属及目标授权 |
-| 403 | APPLICATION_DISABLED / ORIGIN_NOT_ALLOWED / CSRF_INVALID | 检查应用状态、来源或 CSRF |
-| 404 | NOTIFICATION_NOT_FOUND / DELIVERY_NOT_FOUND | 检查 ID 与应用归属 |
-| 404 | APPLICATION_NOT_FOUND / CHANNEL_NOT_FOUND / RESOURCE_NOT_FOUND / ROUTE_NOT_FOUND | 检查管理资源或路径 |
+| 403 | ORIGIN_NOT_ALLOWED / CSRF_INVALID | 检查来源或 CSRF |
+| 404 | NOTIFICATION_NOT_FOUND / DELIVERY_NOT_FOUND | 检查通知或投递 ID |
+| 404 | CHANNEL_NOT_FOUND / RESOURCE_NOT_FOUND / ROUTE_NOT_FOUND | 检查管理资源或路径 |
 | 409 | IDEMPOTENCY_CONFLICT | 核查是否错误复用了键，不要盲目换键重试 |
 | 409 | RESOURCE_CONFLICT / DELIVERY_STATE_CONFLICT / ALREADY_INITIALIZED | 修正冲突或操作状态 |
 | 413 / 415 | REQUEST_TOO_LARGE / UNSUPPORTED_MEDIA_TYPE | 默认请求上限 64 KiB，使用 application/json |
@@ -152,10 +152,10 @@ HTTP 403 表示接口受理失败：
 
 ## 升级与重试
 
-本次为接口契约调整：旧客户端需要把 Idempotency-Key 请求头移到 JSON 的 idempotency_key，并从响应 data 读取业务结果。旧头不再参与幂等判断；仅提供旧头返回缺失字段错误，提供两者时以 JSON 为准。投递结果的 lastCode/lastMessage 调整为 error.code/message/source_code，发送尝试审计保留原始代码。
+需要幂等去重的客户端应把 Idempotency-Key 请求头移到 JSON 的可选 idempotency_key，并从响应 data 读取业务结果。旧头被忽略；仅提供旧头按无键请求处理，每次都会创建新通知，提供两者时以 JSON 为准。投递结果的 lastCode/lastMessage 调整为 error.code/message/source_code，发送尝试审计保留原始代码。
 
-启动迁移会补齐渠道短 ID，并删除 Notification.event 列。应用、API Key、会话、历史通知和投递的其他数据保留；idempotency_key 在计算业务请求摘要前拆出。
+启动迁移会补齐渠道短 ID，并删除 Notification.event 列。API Key、会话、历史通知和投递记录保留；接入应用模型已移除，详情见鉴权迁移说明；idempotency_key 在计算业务请求摘要前拆出。
 
 移除 event 会改变请求摘要。旧通知的幂等键及摘要继续保留，不会清空去重记录或重发旧通知；使用新请求结构复用旧键可能返回 HTTP 409 / IDEMPOTENCY_CONFLICT，此时应查询原通知核对结果。
 
-连接失败、TLS 错误或网络超时时可能没有 JSON；HTTP 5xx 也不能证明业务未执行。调用方保存业务幂等键，在允许的场景下退避重试或查询，避免为同一通知重新生成键。unknown 投递由控制台核实或确认风险后重发，调用方不要将其当作确定失败自动重发。
+连接失败、TLS 错误或网络超时时可能没有 JSON；HTTP 5xx 也不能证明业务未执行。已提供幂等键的请求可复用原键重试或查询；未提供时，重试可能重复发送，应先核对受理或投递结果。unknown 投递由控制台核实或确认风险后重发，调用方不要将其当作确定失败自动重发。
