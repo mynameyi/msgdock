@@ -75,9 +75,13 @@ export function SystemPage() {
           <Form.Item
             name="newPassword"
             label="新密码"
-            rules={[{ required: true }, { min: 12, message: '密码至少 12 位' }]}
+            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
           >
-            <Input.Password autoComplete="new-password" maxLength={128} />
+            <Input.Password
+              autoComplete="new-password"
+              placeholder="至少 8 位，允许纯数字"
+              maxLength={128}
+            />
           </Form.Item>
         </Form>
       </Modal>

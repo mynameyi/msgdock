@@ -71,12 +71,12 @@ export function IdentityPage({
             name="password"
             rules={[
               { required: true, message: '请输入密码' },
-              { min: 12, message: '密码至少 12 位' },
+              { min: 8, message: '密码至少 8 位' },
             ]}
           >
             <Input.Password
               autoComplete={needsSetup ? 'new-password' : 'current-password'}
-              placeholder="至少 12 位"
+              placeholder="至少 8 位，允许纯数字"
               maxLength={128}
             />
           </Form.Item>

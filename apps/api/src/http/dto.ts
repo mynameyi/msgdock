@@ -23,14 +23,23 @@ import {
 } from 'class-validator';
 export class LoginDto {
   @ApiProperty() @IsString() @Matches(/^[a-zA-Z0-9_.-]{3,40}$/) username!: string;
-  @ApiProperty({ format: 'password' }) @IsString() @Length(12, 128) password!: string;
+  @ApiProperty({ format: 'password', minLength: 8, maxLength: 128 })
+  @IsString()
+  @Length(8, 128)
+  password!: string;
 }
 export class SetupDto extends LoginDto {
   @ApiProperty() @IsString() @Length(20, 200) setupToken!: string;
 }
 export class PasswordDto {
-  @ApiProperty({ format: 'password' }) @IsString() @Length(12, 128) oldPassword!: string;
-  @ApiProperty({ format: 'password' }) @IsString() @Length(12, 128) newPassword!: string;
+  @ApiProperty({ format: 'password', minLength: 8, maxLength: 128 })
+  @IsString()
+  @Length(8, 128)
+  oldPassword!: string;
+  @ApiProperty({ format: 'password', minLength: 8, maxLength: 128 })
+  @IsString()
+  @Length(8, 128)
+  newPassword!: string;
 }
 export class ApiKeyDto {
   @ApiProperty() @IsString() @Length(1, 80) @Matches(/\S/) name!: string;
